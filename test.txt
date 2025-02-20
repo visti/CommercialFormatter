@@ -1,5 +1,1 @@
-24110100:00:4800:11000631851R1 Top of hour 2                                  Bjarke Rasmussen                                  Ukendt                   999999998                                           
-24110100:00:5704:34000000921Let Your Fingers Do The Walking                   Sort Sol                                          Columbia                 100106259 0001 0003 DK    1993                      
-24110100:05:2800:04000970650R1 Sw Nat - 02 (Musik Til Din Nat).               Bjarke Rasmussen                                  Ukendt                   999999998                                           
-24110100:05:2803:32000004368Can't Fight The Moonlight                         Leann Rimes                                       Universal                100236818 0001 0004 US    2000                      
 24110100:09:0000:03000970381R1 Sw Generic - 08 (100% God Musik).              Bjarke Rasmussen                                  Ukendt                   999999998                                           
