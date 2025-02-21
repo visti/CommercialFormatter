@@ -18,6 +18,7 @@ Station :: struct {
 	stopwords:     []string,
 	ext:           []string,
 	has_headlines: bool,
+	headlines:     []string,
 }
 
 Stations := []Station{Bauer, Jyskfynske}
@@ -52,6 +53,20 @@ Bauer := Station {
 		"VEJR",
 		"Bauer",
 	},
+	headlines     = {
+		"Date of Broadcasting",
+		"Track starting time",
+		"Track playing time",
+		"Local-ID;Track Title",
+		"Main Artist",
+		"Record Label",
+		"GramexID",
+		"Side",
+		"Tracknummer",
+		"Country of Recording",
+		"Year of first release",
+		"ISRC-Code",
+	},
 }
 
 printstation :: proc(station: Station) {
@@ -67,7 +82,7 @@ printstation :: proc(station: Station) {
 	}
 }
 
-get_files :: proc(ext: []string) -> []string {
+get_files :: proc(ext: ''string) -> []string {
 	output_files: string
 	a: []string
 
@@ -159,9 +174,9 @@ db :: proc($T: typeid, value: T) {
 
 process_files :: proc(file: ^string, station: Station) {
 	db(string, "process_lines started.")
-	processed_lines := ""
-
 	modified_line: [dynamic]string
+	processed_lines: [dynamic]string
+
 
 	db(string, "positions:")
 	db([]int, station.positions)
@@ -172,18 +187,22 @@ process_files :: proc(file: ^string, station: Station) {
 		start: int
 
 		#reverse for pos in station.positions {
-			append(&parts, line[start:pos])
+			part := line[start:pos]
+			trimmed_part := str.trim_space(part)
+			append(&parts, trimmed_part)
 			start = pos
 		}
 
 		append(&parts, line[start:])
 
-		modified_line := str.join(parts, ";")
-		processed_lines += modified_line + "\n"
+		modified_line := str.join(parts[:], ";")
+		append(&processed_lines, modified_line)
 
-		db([dynamic]string, parts)
-
+		final_output := str.join(processed_lines[:], "\n")
+		os.write_entire_file("output.csv", transmute([]byte)(final_output))
 		//output := str.join(processed_lines, "\n")
 		//os.write_entire_file("output.txt", transmute([]byte)(processed_lines))
 	}
+
+	db([dynamic]string, processed_lines)
 }
