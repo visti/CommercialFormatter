@@ -86,6 +86,8 @@ get_files :: proc(ext: []string) -> []string {
 			}
 		}
 	}
+	db(string, "output of get_files:")
+	db([]string, str.split(output_files[1:], ";"))
 	return str.split(output_files[1:], ";")
 }
 
@@ -120,23 +122,18 @@ main :: proc() {
 	}
 
 
-	// process_line(&new_file)
-	//
 	stationChoice := ask_user_stationtype()
 
 	filelist := get_files(stationChoice.ext)
 	new_file := read_file(filelist)
-	fmt.printf("files: %v", new_file)
-	//process_files(filelist, stationChoice)
+	process_files(&new_file, stationChoice)
 }
 
 
 read_file :: proc(files: []string) -> string {
-	db("read_file opened")
 	joined_files: string
 	imported_files: string
 	for file in files {
-		db("read_file loop start")
 		data, ok := os.read_entire_file(file, context.allocator)
 
 		if !ok {
@@ -148,30 +145,45 @@ read_file :: proc(files: []string) -> string {
 		joined_files = str.concatenate(a)
 
 	}
-
-	fmt.printf("%v\n", joined_files)
-	return imported_files
+	db(string, "Input lines:")
+	// db(string, joined_files)
+	return joined_files
 }
 
-db :: proc(string: string) {
-	if DEBUG {fmt.printf("DEBUG: %v\n", string)}
+db :: proc($T: typeid, value: T) {
+	if DEBUG {
+		fmt.printf("DEBUG: %v\n", value)
+	}
 }
 
-// process_files :: proc(file: ^string, station: Station) {
-// 	processed_lines := ""
-//
-// 	for line in str.split_lines_iterator(file) {
-// 		modified_line := line
-// 		for _, pos in station.positions {
-// 			//fmt.printf("%v \n", line[:bauerPos[pos]])
-// 			a := [?]string{modified_line[:station[pos]], ";", modified_line[station[pos]:]}
-// 			modified_line = str.concatenate(a[:])
-// 		}
-// 		b := [?]string{processed_lines, modified_line}
-//
-// 		processed_lines = str.concatenate(b[:])
-//
-// 		//output := str.join(processed_lines, "\n")
-// 		os.write_entire_file("test2.txt", transmute([]byte)(processed_lines))
-// 	}
-// }
+
+process_files :: proc(file: ^string, station: Station) {
+	db(string, "process_lines started.")
+	processed_lines := ""
+
+	modified_line: [dynamic]string
+
+	db(string, "positions:")
+	db([]int, station.positions)
+
+
+	for line in str.split_lines_iterator(file) {
+		parts: [dynamic]string
+		start: int
+
+		#reverse for pos in station.positions {
+			append(&parts, line[start:pos])
+			start = pos
+		}
+
+		append(&parts, line[start:])
+
+		modified_line := str.join(parts, ";")
+		processed_lines += modified_line + "\n"
+
+		db([dynamic]string, parts)
+
+		//output := str.join(processed_lines, "\n")
+		//os.write_entire_file("output.txt", transmute([]byte)(processed_lines))
+	}
+}
