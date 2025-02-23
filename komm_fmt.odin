@@ -8,6 +8,9 @@ import "core:unicode/utf8"
 
 DEBUG :: true
 
+OUTPUTFILE :: "output.csv"
+REJECTFILE :: "rejected.csv"
+
 // ERROR MESSAGES
 NOT_VALID_STATION :: "ERROR: No valid station selected as argument."
 
@@ -82,7 +85,7 @@ printstation :: proc(station: Station) {
 	}
 }
 
-get_files :: proc(ext: ''string) -> []string {
+get_files :: proc(ext: []string) -> []string {
 	output_files: string
 	a: []string
 
@@ -126,6 +129,16 @@ ask_user_stationtype :: proc() -> Station {
 
 // Main entry point.
 main :: proc() {
+	zonks: string = ""
+
+	if os.is_file(OUTPUTFILE) {err := os.remove(OUTPUTFILE)
+
+		if err == nil {
+			db(string, "Deleted output file.")
+		}}
+
+	os.write_entire_file(OUTPUTFILE, transmute([]byte)(zonks))
+
 	if len(os.args) == 1 {
 		fmt.printf("Provide at least one argument.\n")
 		fmt.printf("args: %v\n")
@@ -160,8 +173,6 @@ read_file :: proc(files: []string) -> string {
 		joined_files = str.concatenate(a)
 
 	}
-	db(string, "Input lines:")
-	// db(string, joined_files)
 	return joined_files
 }
 
@@ -173,35 +184,45 @@ db :: proc($T: typeid, value: T) {
 
 
 process_files :: proc(file: ^string, station: Station) {
-	db(string, "process_lines started.")
 	modified_line: [dynamic]string
 	processed_lines: [dynamic]string
+	headlines_out: string
+	zonks: string
 
+	//create rejection file
+	os.write_entire_file(REJECTFILE, transmute([]byte)(zonks))
 
-	db(string, "positions:")
-	db([]int, station.positions)
+	if !station.has_headlines {
+		headlines_out = str.join(station.headlines, ";")
+	}
 
+	f, err := os.open(OUTPUTFILE, 1)
+
+	if err != nil {
+		fmt.printf("%v\n", err)
+	}
 
 	for line in str.split_lines_iterator(file) {
 		parts: [dynamic]string
 		start: int
 
-		#reverse for pos in station.positions {
-			part := line[start:pos]
+		#reverse for position in station.positions {
+			part := line[start:position]
 			trimmed_part := str.trim_space(part)
 			append(&parts, trimmed_part)
-			start = pos
+			start = position
 		}
 
+		// construct output line from parts
 		append(&parts, line[start:])
-
 		modified_line := str.join(parts[:], ";")
-		append(&processed_lines, modified_line)
+		output_line := str.join([]string{modified_line, "\n"}, "")
 
-		final_output := str.join(processed_lines[:], "\n")
-		os.write_entire_file("output.csv", transmute([]byte)(final_output))
-		//output := str.join(processed_lines, "\n")
-		//os.write_entire_file("output.txt", transmute([]byte)(processed_lines))
+		_, err := os.write_string(f, output_line)
+
+		if err != nil {
+			fmt.printf("%v\n", err)
+		}
 	}
 
 	db([dynamic]string, processed_lines)
