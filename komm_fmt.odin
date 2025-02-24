@@ -6,39 +6,39 @@ import "core:os"
 import str "core:strings"
 import "core:unicode/utf8"
 
-DEBUG :: true
+DEBUG :: false
 
 OUTPUTFILE :: "output.csv"
 REJECTFILE :: "rejected.csv"
 
 // ERROR MESSAGES
-NOT_VALID_STATION :: "ERROR: No valid station selected as argument."
+NOTVALIDSTATION :: "ERROR: No valid station selected as argument."
 
-Station :: struct {
-	name:          string,
-	filename:      string,
-	positions:     []int,
-	stopwords:     []string,
-	ext:           []string,
-	has_headlines: bool,
-	headlines:     []string,
+station :: struct {
+	name:         string,
+	filename:     string,
+	positions:    []int,
+	stopwords:    []string,
+	ext:          []string,
+	hasHeadlines: bool,
+	headlines:    []string,
 }
 
-Stations := []Station{Bauer, Jyskfynske}
+Stations := []station{Bauer, Jyskfynske}
 
-Jyskfynske := Station {
-	name          = "Jyskfynske",
-	ext           = {"txt", "den"},
-	has_headlines = false,
-	positions     = {297, 291, 288, 267, 216, 200, 149, 98, 47, 37, 28, 27, 20, 11},
+Jyskfynske := station {
+	name         = "Jyskfynske",
+	ext          = {"txt", "den"},
+	hasHeadlines = false,
+	positions    = {297, 291, 288, 267, 216, 200, 149, 98, 47, 37, 28, 27, 20, 11},
 }
 
-Bauer := Station {
-	name          = "Bauer",
-	positions     = {185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6},
-	has_headlines = false,
-	ext           = {"txt"},
-	stopwords     = {
+Bauer := station {
+	name         = "Bauer",
+	positions    = {185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6},
+	hasHeadlines = false,
+	ext          = {"txt"},
+	stopwords    = {
 		"R1 ",
 		" R1 ",
 		"TOP HOUR",
@@ -56,7 +56,7 @@ Bauer := Station {
 		"VEJR",
 		"Bauer",
 	},
-	headlines     = {
+	headlines    = {
 		"Date of Broadcasting",
 		"Track starting time",
 		"Track playing time",
@@ -72,7 +72,7 @@ Bauer := Station {
 	},
 }
 
-printstation :: proc(station: Station) {
+printstation :: proc(station: station) {
 	fmt.printf(
 		"Name: %v\nPositions: %v\nFilename:%v\nStopwords:\n",
 		station.name,
@@ -86,7 +86,7 @@ printstation :: proc(station: Station) {
 }
 
 get_files :: proc(ext: []string) -> []string {
-	output_files: string
+	outputFiles: string
 	a: []string
 
 	cwd := os.get_current_directory()
@@ -97,33 +97,39 @@ get_files :: proc(ext: []string) -> []string {
 
 	for fi in files {
 		for x in ext {
-			lowercase_filename := str.to_lower(fi.name)
-			if str.contains(lowercase_filename, x) {
-				a := []string{output_files, fi.name}
-				output_files = str.join(a, ";")
+			lowercaseFilename := str.to_lower(fi.name)
+			if str.contains(lowercaseFilename, x) {
+				a := []string{outputFiles, fi.name}
+				outputFiles = str.join(a, ";")
 			}
 		}
 	}
-	db(string, "output of get_files:")
-	db([]string, str.split(output_files[1:], ";"))
-	return str.split(output_files[1:], ";")
+	info("Found Files", outputFiles[1:])
+	db([]string, str.split(outputFiles[1:], ";"))
+	return str.split(outputFiles[1:], ";")
 }
 
-ask_user_stationtype :: proc() -> Station {
+info :: proc(field: string, string: string) {
+	fmt.println("---------------------")
+	fmt.printf("%v: %v\n", field, string)
+	fmt.println("---------------------\n")
+}
+
+ask_user_stationtype :: proc() -> station {
 	choice := str.to_upper(os.args[1])
 	switch choice {
 	case "BAUER":
-		fmt.printf("%v\n", "Bauer")
+		info("STATION: ", choice)
 		return Bauer
 	case "JYSKFYNSKE":
-		fmt.printf("%v\n", "Jysk")
+		info("STATION: ", choice)
 		return Jyskfynske
 	case:
-		fmt.printf("%v\n", NOT_VALID_STATION)
+		fmt.printf("%v\n", NOTVALIDSTATION)
 		os.exit(1)
 
 	}
-	return Station{}
+	return station{}
 
 }
 
@@ -134,7 +140,7 @@ main :: proc() {
 	if os.is_file(OUTPUTFILE) {err := os.remove(OUTPUTFILE)
 
 		if err == nil {
-			db(string, "Deleted output file.")
+			db(string, "Initialized output file.")
 		}}
 
 	os.write_entire_file(OUTPUTFILE, transmute([]byte)(zonks))
@@ -153,27 +159,28 @@ main :: proc() {
 	stationChoice := ask_user_stationtype()
 
 	filelist := get_files(stationChoice.ext)
-	new_file := read_file(filelist)
-	process_files(&new_file, stationChoice)
+	newFile := read_file(filelist)
+	process_files(&newFile, stationChoice)
 }
 
 
 read_file :: proc(files: []string) -> string {
-	joined_files: string
-	imported_files: string
+	joinedFiles: string
+
 	for file in files {
 		data, ok := os.read_entire_file(file, context.allocator)
 
 		if !ok {
-			panic("could not read file")
+			panic("COuld not read file.")
 		}
-		it := string(data)
+		defer delete(data, context.allocator)
 
-		a := []string{joined_files, it}
-		joined_files = str.concatenate(a)
+		it := string(data)
+		a := []string{joinedFiles, it}
+		joinedFiles = str.concatenate(a)
 
 	}
-	return joined_files
+	return joinedFiles
 }
 
 db :: proc($T: typeid, value: T) {
@@ -182,21 +189,45 @@ db :: proc($T: typeid, value: T) {
 	}
 }
 
+clean_rejection_file :: proc(file: os.Handle) {
+	size, err := os.file_size(file)
+	if err == nil {
+		if size == 0 {
+			os.remove(REJECTFILE)
+			db(string, "Removed empty rejection file.")
+		}
+	}
+}
 
-process_files :: proc(file: ^string, station: Station) {
-	modified_line: [dynamic]string
-	processed_lines: [dynamic]string
-	headlines_out: string
+check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: station) -> string {
+	for word in currentStation.stopwords {
+		if str.contains(line, word) {
+			a := []string{line, "\n"}
+			os.write_string(file, str.concatenate(a))
+			return "REJECT"
+		} else {return line}
+	}
+	return "REJECT"
+}
+
+
+process_files :: proc(file: ^string, currentStation: station) {
+	modifiedLine: [dynamic]string
+	headlinesOut: string
 	zonks: string
 
 	//create rejection file
 	os.write_entire_file(REJECTFILE, transmute([]byte)(zonks))
+	rejectionFile, rejectfile_open_error := os.open(REJECTFILE, 2)
 
-	if !station.has_headlines {
-		headlines_out = str.join(station.headlines, ";")
-	}
 
 	f, err := os.open(OUTPUTFILE, 1)
+
+	if !currentStation.hasHeadlines {
+		headlinesJoined := str.join(currentStation.headlines, ";")
+		a := []string{headlinesJoined, "\n"}
+		os.write_string(f, str.concatenate(a))
+	}
 
 	if err != nil {
 		fmt.printf("%v\n", err)
@@ -206,24 +237,30 @@ process_files :: proc(file: ^string, station: Station) {
 		parts: [dynamic]string
 		start: int
 
-		#reverse for position in station.positions {
-			part := line[start:position]
-			trimmed_part := str.trim_space(part)
-			append(&parts, trimmed_part)
-			start = position
+		checkedLine := check_for_stopwords(rejectionFile, line, currentStation)
+
+		if checkedLine != "REJECT" {
+			#reverse for position in currentStation.positions {
+				part := (string)(checkedLine)[start:position]
+				trimmedPart := str.trim_space(part)
+				append(&parts, trimmedPart)
+				start = position
+			}
 		}
 
 		// construct output line from parts
-		append(&parts, line[start:])
-		modified_line := str.join(parts[:], ";")
-		output_line := str.join([]string{modified_line, "\n"}, "")
-
-		_, err := os.write_string(f, output_line)
+		if checkedLine != "REJECT" {
+			append(&parts, checkedLine[start:])
+			modifiedLine := str.join(parts[:], ";")
+			outputLine := str.join([]string{modifiedLine, "\n"}, "")
+			_, err := os.write_string(f, outputLine)
+		}
 
 		if err != nil {
 			fmt.printf("%v\n", err)
 		}
+
 	}
 
-	db([dynamic]string, processed_lines)
+	clean_rejection_file(rejectionFile)
 }
