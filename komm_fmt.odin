@@ -24,7 +24,16 @@ station :: struct {
 	headlines:    []string,
 }
 
-Stations := []station{Bauer, Jyskfynske}
+Stations := []station{Bauer, Jyskfynske, Globus}
+
+Globus := station {
+	name         = "Globus",
+	ext          = {"txt"},
+	hasHeadlines = false,
+	stopwords    = {},
+	headlines    = {},
+	positions    = {},
+}
 
 Jyskfynske := station {
 	name         = "Jyskfynske",
@@ -171,7 +180,7 @@ read_file :: proc(files: []string) -> string {
 		data, ok := os.read_entire_file(file, context.allocator)
 
 		if !ok {
-			panic("COuld not read file.")
+			panic("Could not read file.")
 		}
 		defer delete(data, context.allocator)
 
@@ -189,14 +198,19 @@ db :: proc($T: typeid, value: T) {
 	}
 }
 
-clean_rejection_file :: proc(file: os.Handle) {
-	size, err := os.file_size(file)
-	if err == nil {
-		if size == 0 {
-			os.remove(REJECTFILE)
-			db(string, "Removed empty rejection file.")
-		}
-	}
+clean_files :: proc(rejection_file: os.Handle, outputfile: os.Handle) {
+	a := []os.Handle{rejection_file, outputfile}
+	for file in a {
+		path, _ := os.absolute_path_from_handle(file)
+		slicePath := str.split(path, "/", context.allocator)
+		db(string, path)
+		size, err := os.file_size(file)
+		if err == nil {
+			if size == 0 {
+				os.remove(path)
+				fmt.printf("Removed empty file: %v\n", slicePath[len(slicePath) - 1])
+			}
+		}}
 }
 
 check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: station) -> string {
@@ -210,23 +224,30 @@ check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: stati
 	return "REJECT"
 }
 
+wrap_up :: proc(rejected: int, processed: int) {
+	fmt.printf("Processed Lines: %v\n", processed)
+	fmt.printf("Rejected Lines: %v\n", rejected)
+}
+
 
 process_files :: proc(file: ^string, currentStation: station) {
 	modifiedLine: [dynamic]string
 	headlinesOut: string
 	zonks: string
+	rejected: int
+	processed: int
 
 	//create rejection file
 	os.write_entire_file(REJECTFILE, transmute([]byte)(zonks))
 	rejectionFile, rejectfile_open_error := os.open(REJECTFILE, 2)
 
 
-	f, err := os.open(OUTPUTFILE, 1)
+	outputFile, err := os.open(OUTPUTFILE, 1)
 
 	if !currentStation.hasHeadlines {
 		headlinesJoined := str.join(currentStation.headlines, ";")
 		a := []string{headlinesJoined, "\n"}
-		os.write_string(f, str.concatenate(a))
+		os.write_string(outputFile, str.concatenate(a))
 	}
 
 	if err != nil {
@@ -246,21 +267,22 @@ process_files :: proc(file: ^string, currentStation: station) {
 				append(&parts, trimmedPart)
 				start = position
 			}
-		}
+			processed += 1
+		} else {rejected += 1}
 
 		// construct output line from parts
 		if checkedLine != "REJECT" {
 			append(&parts, checkedLine[start:])
 			modifiedLine := str.join(parts[:], ";")
 			outputLine := str.join([]string{modifiedLine, "\n"}, "")
-			_, err := os.write_string(f, outputLine)
+			_, err := os.write_string(outputFile, outputLine)
 		}
 
 		if err != nil {
 			fmt.printf("%v\n", err)
 		}
-
 	}
+	wrap_up(rejected, processed)
 
-	clean_rejection_file(rejectionFile)
+	clean_files(rejectionFile, outputFile)
 }
