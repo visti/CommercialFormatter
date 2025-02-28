@@ -2,13 +2,14 @@ package komm_fmt
 
 import "core:fmt"
 import io "core:io"
+import "core:log"
+import "core:mem"
 import "core:os"
 import str "core:strings"
 import "core:unicode/utf8"
 
 DEBUG :: false
 
-OUTPUTFILE :: "output.csv"
 REJECTFILE :: "rejected.csv"
 
 // ERROR MESSAGES
@@ -113,6 +114,12 @@ get_files :: proc(ext: []string) -> []string {
 			}
 		}
 	}
+	if len(outputFiles) == 0 {
+		info("", "No eligible files found.")
+		os.exit(1)
+	}
+
+
 	info("Found Files", outputFiles[1:])
 	db([]string, str.split(outputFiles[1:], ";"))
 	return str.split(outputFiles[1:], ";")
@@ -142,17 +149,40 @@ ask_user_stationtype :: proc() -> station {
 
 }
 
+ask_output_filename :: proc() -> string {
+	buf: [256]byte
+	fmt.println("Set output filename: \n")
+	n, err := os.read(os.stdin, buf[:])
+
+	if err != nil {
+		fmt.eprintln("Error: ", err)
+	}
+
+	if string(buf[:n]) == "" {
+		fmt.eprintln("ERROR: Output filename cannot be empty!")
+		os.exit(1)
+	}
+
+	return string(buf[:n])
+}
+
 // Main entry point.
 main :: proc() {
 	zonks: string = ""
+	outputFile := ask_output_filename()
+	if outputFile == "" {
+		fmt.eprintln("ERROR: Filename empty in main function.")
+		os.exit(1)
+	} else {fmt.printf("%c", outputFile)}
 
-	if os.is_file(OUTPUTFILE) {err := os.remove(OUTPUTFILE)
+	fmt.printf("DEBUG: Final outputFile: '%v'\n", outputFile) // Ensure it updates correctly
+	if os.is_file(outputFile) {
+		err := os.remove(outputFile)
 
 		if err == nil {
 			db(string, "Initialized output file.")
 		}}
-
-	os.write_entire_file(OUTPUTFILE, transmute([]byte)(zonks))
+	os.write_entire_file(outputFile, transmute([]byte)(zonks))
 
 	if len(os.args) == 1 {
 		fmt.printf("Provide at least one argument.\n")
@@ -169,7 +199,7 @@ main :: proc() {
 
 	filelist := get_files(stationChoice.ext)
 	newFile := read_file(filelist)
-	process_files(&newFile, stationChoice)
+	process_files(&newFile, stationChoice, outputFile)
 }
 
 
@@ -185,6 +215,8 @@ read_file :: proc(files: []string) -> string {
 		defer delete(data, context.allocator)
 
 		it := string(data)
+
+		fmt.printf("it: %v\n", it)
 		a := []string{joinedFiles, it}
 		joinedFiles = str.concatenate(a)
 
@@ -230,7 +262,7 @@ wrap_up :: proc(rejected: int, processed: int) {
 }
 
 
-process_files :: proc(file: ^string, currentStation: station) {
+process_files :: proc(file: ^string, currentStation: station, outputFile: string) {
 	modifiedLine: [dynamic]string
 	headlinesOut: string
 	zonks: string
@@ -239,15 +271,24 @@ process_files :: proc(file: ^string, currentStation: station) {
 
 	//create rejection file
 	os.write_entire_file(REJECTFILE, transmute([]byte)(zonks))
+
+	if !os.is_file(REJECTFILE) {
+		fmt.eprintln("ERROR: File was not created:", outputFile)
+		os.exit(1)
+	}
 	rejectionFile, rejectfile_open_error := os.open(REJECTFILE, 2)
 
 
-	outputFile, err := os.open(OUTPUTFILE, 1)
+	outputFileHandle, err := os.open(outputFile, os.O_CREATE | os.O_WRONLY | os.O_TRUNC)
+	if err != nil {
+		fmt.eprintln("ERROR: could not create output file:", err)
+	}
+	defer os.close(outputFileHandle)
 
 	if !currentStation.hasHeadlines {
 		headlinesJoined := str.join(currentStation.headlines, ";")
 		a := []string{headlinesJoined, "\n"}
-		os.write_string(outputFile, str.concatenate(a))
+		os.write_string(outputFileHandle, str.concatenate(a))
 	}
 
 	if err != nil {
@@ -275,7 +316,7 @@ process_files :: proc(file: ^string, currentStation: station) {
 			append(&parts, checkedLine[start:])
 			modifiedLine := str.join(parts[:], ";")
 			outputLine := str.join([]string{modifiedLine, "\n"}, "")
-			_, err := os.write_string(outputFile, outputLine)
+			_, err := os.write_string(outputFileHandle, outputLine)
 		}
 
 		if err != nil {
@@ -284,5 +325,5 @@ process_files :: proc(file: ^string, currentStation: station) {
 	}
 	wrap_up(rejected, processed)
 
-	clean_files(rejectionFile, outputFile)
+	clean_files(rejectionFile, outputFileHandle)
 }
