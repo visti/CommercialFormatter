@@ -153,7 +153,7 @@ ask_user_stationtype :: proc() -> station {
 
 ask_output_filename :: proc(currentStation: ^station) {
 	buf: [256]byte
-	fmt.println("Set output filename: \n")
+	fmt.println("Set output filename: ")
 	n, err := os.read(os.stdin, buf[:])
 
 	if err != nil {
@@ -176,15 +176,13 @@ main :: proc() {
 
 	ask_output_filename(&stationChoice)
 	defer delete(stationChoice.filename)
-
 	outputFile := stationChoice.filename
 
 	if outputFile == "" {
 		fmt.eprintln("ERROR: Filename empty in main function.")
 		os.exit(1)
-	} else {fmt.printf("%c", outputFile)}
+	}
 
-	fmt.printf("DEBUG: Final outputFile: '%v'\n", outputFile) // Ensure it updates correctly
 	if os.is_file(outputFile) {
 		err := os.remove(outputFile)
 
@@ -223,7 +221,6 @@ read_file :: proc(files: []string) -> string {
 
 		it := string(data)
 
-		fmt.printf("it: %v\n", it)
 		a := []string{joinedFiles, it}
 		joinedFiles = str.concatenate(a)
 
