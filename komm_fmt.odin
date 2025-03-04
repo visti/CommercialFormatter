@@ -29,6 +29,7 @@ Stations := []station{Bauer, Jyskfynske, Globus}
 
 Globus := station {
 	name         = "Globus",
+	filename     = "",
 	ext          = {"txt"},
 	hasHeadlines = false,
 	stopwords    = {},
@@ -45,6 +46,7 @@ Jyskfynske := station {
 
 Bauer := station {
 	name         = "Bauer",
+	filename     = "",
 	positions    = {185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6},
 	hasHeadlines = false,
 	ext          = {"txt"},
@@ -149,7 +151,7 @@ ask_user_stationtype :: proc() -> station {
 
 }
 
-ask_output_filename :: proc() -> string {
+ask_output_filename :: proc(currentStation: ^station) {
 	buf: [256]byte
 	fmt.println("Set output filename: \n")
 	n, err := os.read(os.stdin, buf[:])
@@ -163,13 +165,20 @@ ask_output_filename :: proc() -> string {
 		os.exit(1)
 	}
 
-	return string(buf[:n])
+	currentStation.filename = str.clone(str.trim_space(string(buf[:n])))
 }
 
 // Main entry point.
 main :: proc() {
 	zonks: string = ""
-	outputFile := ask_output_filename()
+
+	stationChoice := ask_user_stationtype()
+
+	ask_output_filename(&stationChoice)
+	defer delete(stationChoice.filename)
+
+	outputFile := stationChoice.filename
+
 	if outputFile == "" {
 		fmt.eprintln("ERROR: Filename empty in main function.")
 		os.exit(1)
@@ -194,8 +203,6 @@ main :: proc() {
 		return
 	}
 
-
-	stationChoice := ask_user_stationtype()
 
 	filelist := get_files(stationChoice.ext)
 	newFile := read_file(filelist)
