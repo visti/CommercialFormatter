@@ -11,6 +11,21 @@ import "core:unicode/utf8"
 DEBUG :: false
 
 REJECTFILE :: "rejected.csv"
+DEFAULT_HEADLINES :: []string {
+	"Date of Broadcasting",
+	"Track starting time",
+	"Track playing time",
+	"Local-ID",
+	"Track Title",
+	"Main Artist",
+	"Record Label",
+	"GramexID",
+	"Side",
+	"Tracknummer",
+	"Country of Recording",
+	"Year of first release",
+	"ISRC-Code",
+}
 
 // ERROR MESSAGES
 NOTVALIDSTATION :: "ERROR: No valid station selected as argument."
@@ -41,7 +56,67 @@ Jyskfynske := station {
 	name         = "Jyskfynske",
 	ext          = {"txt", "den"},
 	hasHeadlines = false,
-	positions    = {297, 291, 288, 267, 216, 200, 149, 98, 47, 37, 28, 27, 20, 11},
+	positions    = {297, 291, 288, 267, 206, 200, 149, 98, 47, 26, 20, 11},
+	headlines    = {
+		"Date of Broadcasting", // 11
+		"Track starting time", // 20
+		"Track playing time", // 26
+		"DELETE",
+		"Album Title", // 47
+		"Track Title", // 98
+		"Main Artist", // 149
+		"DELETE",
+		"Record Label", // 200
+		"Catalogue No.", // 206
+		"Country of Recording", // 267
+		"Year of First Release", // 288
+		"DELETE", // 291
+	},
+	stopwords    = {
+		"vejr",
+		"vejle",
+		";classic ",
+		";dph ",
+		"classic fm",
+		";rw*",
+		" rv ",
+		" rek ",
+		" intro ",
+		"gmmj",
+		" acc happy",
+		"sponsor",
+		"viborg",
+		"rv_",
+		"*rv",
+		"wb_",
+		" sw ",
+		"sw_",
+		"sweeper",
+		"vlr",
+		"toh ",
+		"sw_unknown artist",
+		"skala listen",
+		"skala_",
+		"_skala",
+		"jfm",
+		"festudvalget",
+		"skala fm",
+		"promo",
+		"nyheder",
+		"reklame",
+		"toh skala",
+		"fest_",
+		"vejrsyd",
+		"vejr [",
+		"listen_count",
+		"dst_",
+		"fa_",
+		"vib_",
+		"rek-",
+		"vi elsker - ",
+		"happy hour",
+		"trackbed",
+	},
 }
 
 Bauer := station {
@@ -68,20 +143,7 @@ Bauer := station {
 		"VEJR",
 		"Bauer",
 	},
-	headlines    = {
-		"Date of Broadcasting",
-		"Track starting time",
-		"Track playing time",
-		"Local-ID;Track Title",
-		"Main Artist",
-		"Record Label",
-		"GramexID",
-		"Side",
-		"Tracknummer",
-		"Country of Recording",
-		"Year of first release",
-		"ISRC-Code",
-	},
+	headlines    = DEFAULT_HEADLINES,
 }
 
 printstation :: proc(station: station) {
@@ -250,15 +312,18 @@ clean_files :: proc(rejection_file: os.Handle, outputfile: os.Handle) {
 }
 
 check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: station) -> string {
+	lowercaseLine := str.to_lower(line) // Convert entire line to lowercase
+
 	for word in currentStation.stopwords {
-		if str.contains(line, word) {
-			a := []string{line, "\n"}
+		if str.contains(lowercaseLine, str.to_lower(word)) { 	// Compare in lowercase
+			a := []string{line, "\n"} // Write original line to rejected file
 			os.write_string(file, str.concatenate(a))
-			return "REJECT"
-		} else {return line}
+			return "REJECT" // Stop early if a stopword is found
+		}
 	}
-	return "REJECT"
+	return line // Only return the line if NO stopwords matched
 }
+
 
 wrap_up :: proc(rejected: int, processed: int) {
 	fmt.printf("Processed Lines: %v\n", processed)
@@ -291,6 +356,7 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 
 	if !currentStation.hasHeadlines {
 		headlinesJoined := str.join(currentStation.headlines, ";")
+		fmt.println(headlinesJoined)
 		a := []string{headlinesJoined, "\n"}
 		os.write_string(outputFileHandle, str.concatenate(a))
 	}
@@ -306,8 +372,14 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 		checkedLine := check_for_stopwords(rejectionFile, line, currentStation)
 
 		if checkedLine != "REJECT" {
-			#reverse for position in currentStation.positions {
+			#reverse for &position in currentStation.positions {
+				lineLength := len(checkedLine)
+				if position > lineLength {
+					position = lineLength // Prevent out-of-bounds slicing
+				}
 				part := (string)(checkedLine)[start:position]
+
+
 				trimmedPart := str.trim_space(part)
 				append(&parts, trimmedPart)
 				start = position
