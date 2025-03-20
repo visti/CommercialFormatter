@@ -7,12 +7,17 @@ import "core:mem"
 import "core:os"
 import filepath "core:path/filepath"
 import str "core:strings"
+import "core:time"
+import dt "core:time/datetime"
 import "core:unicode/utf8"
 
 DEBUG :: false
 
+NOW := time.now()
+
+REJECTDIR :: "/mnt/c/Users/eva/Gramex/Rapporteringer - Documents/Afviste_linjer_kom_land"
 SEPARATOR := ";"
-REJECTFILE :: "rejected.csv"
+REJECTFILE := "rejected.csv"
 DEFAULT_HEADLINES :: []string {
 	"Date of Broadcasting",
 	"Track starting time",
@@ -404,18 +409,28 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 	zonks: string
 	rejected: int
 	processed: int
+	currenttime, ok := time.time_to_datetime(NOW)
+	datestring := fmt.tprintf("%d-%d-%d", currenttime.year, currenttime.month, currenttime.day)
 
+	REJECTFILE = str.join([]string{datestring, "reject", currentStation.name}, "-")
+	rejectPath := filepath.join({REJECTDIR, REJECTFILE})
+	rejectPath = str.join({rejectPath, "csv"}, ".")
+
+	fmt.println("Rejection file saved to: ", rejectPath)
 	if currentStation.name == "Globus" {SEPARATOR = ":"}
 
 	//create rejection file
-	os.write_entire_file(REJECTFILE, transmute([]byte)(zonks))
+	os.write_entire_file(rejectPath, transmute([]byte)(zonks))
 
-	if !os.is_file(REJECTFILE) {
+	if !os.is_file(rejectPath) {
 		fmt.eprintln("ERROR: File was not created:", outputFile)
 		os.exit(1)
 	}
-	rejectionFile, rejectfile_open_error := os.open(REJECTFILE, 2)
+	rejectionFile, rejectfile_open_error := os.open(rejectPath, 2)
 
+	if rejectfile_open_error != nil {
+		fmt.eprintln("Error creating rejectfile: ", rejectfile_open_error)
+	}
 
 	outputFileHandle, err := os.open(outputFile, os.O_CREATE | os.O_WRONLY | os.O_TRUNC)
 	if err != nil {
@@ -425,9 +440,9 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 
 	if !currentStation.hasHeadlines {
 		headlinesJoined := str.join(currentStation.headlines, ";")
-		fmt.println(headlinesJoined)
 		a := []string{headlinesJoined, "\n"}
 		os.write_string(outputFileHandle, str.concatenate(a))
+		os.write_string(rejectionFile, str.concatenate(a))
 	}
 
 	if err != nil {
