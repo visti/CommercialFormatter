@@ -14,7 +14,6 @@ import "core:unicode/utf8"
 DEBUG :: false
 
 NOW := time.now()
-
 REJECTDIR :: "/mnt/c/Users/eva/Gramex/Rapporteringer - Documents/Afviste_linjer_kom_land"
 SEPARATOR := ";"
 REJECTFILE := "rejected.csv"
@@ -220,11 +219,9 @@ printstation :: proc(station: station) {
 get_files :: proc(ext: []string) -> []string {
 	outputFiles: string
 	a: []string
-
 	cwd := os.get_current_directory()
 	f, err := os.open(cwd)
 	defer os.close(f)
-
 	files, _ := os.read_dir(f, 1)
 
 	for fi in files {
@@ -240,7 +237,6 @@ get_files :: proc(ext: []string) -> []string {
 		info("", "No eligible files found.")
 		os.exit(1)
 	}
-
 
 	info("Found Files", outputFiles[1:])
 	db([]string, str.split(outputFiles[1:], ";"))
@@ -286,7 +282,6 @@ ask_output_filename :: proc(currentStation: ^station) {
 // Main entry point.
 main :: proc() {
 	zonks: string = ""
-
 	stationChoice := ask_user_stationtype()
 
 	ask_output_filename(&stationChoice)
@@ -305,7 +300,6 @@ main :: proc() {
 			db(string, "Initialized output file.")
 		}}
 
-
 	os.write_entire_file(outputFile, transmute([]byte)(zonks))
 
 	if len(os.args) == 1 {
@@ -317,20 +311,16 @@ main :: proc() {
 
 		return
 	}
-
-
 	filelist := get_files(stationChoice.ext)
 	newFile := read_file(filelist, stationChoice)
 	process_files(&newFile, stationChoice, outputFile)
 }
-
 
 read_file :: proc(files: []string, currentStation: station) -> string {
 	joinedFiles: string
 
 	for file in files {
 		baseFilename := filepath.stem(file)
-
 		data, ok := os.read_entire_file(file, context.allocator)
 
 		if !ok {
@@ -351,13 +341,9 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 				}
 				it = str.join(lines, "\n")
 			}
-
-
 		}
-
 		a := []string{joinedFiles, it}
 		joinedFiles = str.concatenate(a)
-
 	}
 	return joinedFiles
 }
@@ -396,12 +382,10 @@ check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: stati
 	return line // Only return the line if NO stopwords matched
 }
 
-
 wrap_up :: proc(rejected: int, processed: int) {
 	fmt.printf("Processed Lines: %v\n", processed)
 	fmt.printf("Rejected Lines: %v\n", rejected)
 }
-
 
 process_files :: proc(file: ^string, currentStation: station, outputFile: string) {
 	modifiedLine: [dynamic]string
@@ -462,7 +446,6 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 					position = lineLength // Prevent out-of-bounds slicing
 				}
 				part := (string)(checkedLine)[start:position]
-
 
 				trimmedPart := str.trim_space(part)
 				append(&parts, trimmedPart)
