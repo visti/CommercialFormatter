@@ -240,6 +240,13 @@ get_files :: proc(ext: []string) -> []string {
 	return filenames[:]
 }
 
+write_headlines :: proc(currentStation: station, file: os.Handle) {
+	headlinesJoined := str.join(currentStation.headlines, ";")
+	a := []string{headlinesJoined, "\n"}
+	os.write_string(file, str.concatenate(a))
+
+}
+
 info :: proc(field: string, string: string) {
 	fmt.println("---------------------")
 	fmt.printf("%v: %v\n", field, string)
@@ -366,6 +373,19 @@ clean_files :: proc(rejection_file: os.Handle, outputfile: os.Handle) {
 		}}
 }
 
+generate_rejection_filename :: proc(currentStation: station) -> string {
+	currentTime, ok := time.time_to_datetime(NOW)
+
+	if !ok {
+		panic("could not get current time.")
+	}
+
+	datestring := fmt.tprintf("%d-%d-%d", currentTime.year, currentTime.month, currentTime.day)
+	REJECTFILE := str.join([]string{datestring, "reject", currentStation.name}, "-")
+	rejectPath := filepath.join({REJECTDIR, REJECTFILE})
+	return str.join({rejectPath, "csv"}, ".")
+}
+
 check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: station) -> string {
 	lowercaseLine := str.to_lower(line) // Convert entire line to lowercase
 
@@ -391,11 +411,7 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 	rejected: int
 	processed: int
 	currenttime, ok := time.time_to_datetime(NOW)
-	datestring := fmt.tprintf("%d-%d-%d", currenttime.year, currenttime.month, currenttime.day)
-
-	REJECTFILE = str.join([]string{datestring, "reject", currentStation.name}, "-")
-	rejectPath := filepath.join({REJECTDIR, REJECTFILE})
-	rejectPath = str.join({rejectPath, "csv"}, ".")
+	rejectPath := generate_rejection_filename(currentStation)
 
 	fmt.println("Rejection file saved to: ", rejectPath)
 	if currentStation.name == "Globus" {SEPARATOR = ":"}
@@ -420,10 +436,8 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 	defer os.close(outputFileHandle)
 
 	if !currentStation.hasHeadlines {
-		headlinesJoined := str.join(currentStation.headlines, ";")
-		a := []string{headlinesJoined, "\n"}
-		os.write_string(outputFileHandle, str.concatenate(a))
-		os.write_string(rejectionFile, str.concatenate(a))
+		write_headlines(currentStation, outputFileHandle)
+		write_headlines(currentStation, rejectionFile)
 	}
 
 	if err != nil {
