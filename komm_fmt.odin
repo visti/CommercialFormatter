@@ -217,8 +217,7 @@ printstation :: proc(station: station) {
 }
 
 get_files :: proc(ext: []string) -> []string {
-	outputFiles: string
-	a: []string
+	filenames: [dynamic]string
 	cwd := os.get_current_directory()
 	f, err := os.open(cwd)
 	defer os.close(f)
@@ -228,19 +227,17 @@ get_files :: proc(ext: []string) -> []string {
 		for x in ext {
 			lowercaseFilename := str.to_lower(fi.name)
 			if str.contains(lowercaseFilename, x) {
-				a := []string{outputFiles, fi.name}
-				outputFiles = str.join(a, ";")
+				append(&filenames, str.clone(fi.name))
 			}
 		}
 	}
-	if len(outputFiles) == 0 {
+	if len(filenames) == 0 {
 		info("", "No eligible files found.")
 		os.exit(1)
 	}
 
-	info("Found Files", outputFiles[1:])
-	db([]string, str.split(outputFiles[1:], ";"))
-	return str.split(outputFiles[1:], ";")
+	info("Found Files: ", str.join(filenames[:], ";"))
+	return filenames[:]
 }
 
 info :: proc(field: string, string: string) {
