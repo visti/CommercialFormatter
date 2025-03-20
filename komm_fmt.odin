@@ -5,11 +5,13 @@ import io "core:io"
 import "core:log"
 import "core:mem"
 import "core:os"
+import filepath "core:path/filepath"
 import str "core:strings"
 import "core:unicode/utf8"
 
 DEBUG :: false
 
+SEPARATOR := ";"
 REJECTFILE :: "rejected.csv"
 DEFAULT_HEADLINES :: []string {
 	"Date of Broadcasting",
@@ -47,9 +49,51 @@ Globus := station {
 	filename     = "",
 	ext          = {"txt"},
 	hasHeadlines = false,
-	stopwords    = {},
-	headlines    = {},
-	positions    = {},
+	stopwords    = {
+		"rasmus sk�tt",
+		"dj pool",
+		"FutureRecords",
+		"dj deep",
+		"megamwx",
+		"mega mix",
+		"yearmix",
+		"year mix",
+		"live mix",
+		"mixtape",
+		"mega",
+		"summermix",
+		"dancemix",
+		"skøtt",
+		"hit mix",
+		"vi elsker",
+		"pop mix",
+		"dance mix",
+		"mix cast",
+		"mastermix",
+		"retro mix",
+		"summerparty",
+		"dancemix",
+		"in the mix",
+		"mashup",
+		"weekendmix",
+		"dj cosmo",
+		"dj simonsen",
+		"martin deejay",
+		"dj swa",
+		"dj daniel olsen",
+		"PHILIZZ",
+		"maassive",
+		"dj kosta",
+		"dj tedu",
+	},
+	headlines    = {
+		"Date of Broadcasting",
+		"Track starting time",
+		"Track playing time",
+		"Main Artist",
+		"Track Title",
+	},
+	positions    = {15, 13},
 }
 
 Jyskfynske := station {
@@ -146,6 +190,15 @@ Bauer := station {
 	headlines    = DEFAULT_HEADLINES,
 }
 
+strip_extension :: proc(filename: string) -> string {
+	// Split the filename by '.' and return the first part.
+	parts := str.split(filename, ".")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return filename
+}
+
 printstation :: proc(station: station) {
 	fmt.printf(
 		"Name: %v\nPositions: %v\nFilename:%v\nStopwords:\n",
@@ -197,20 +250,15 @@ info :: proc(field: string, string: string) {
 
 ask_user_stationtype :: proc() -> station {
 	choice := str.to_upper(os.args[1])
-	switch choice {
-	case "BAUER":
-		info("STATION: ", choice)
-		return Bauer
-	case "JYSKFYNSKE":
-		info("STATION: ", choice)
-		return Jyskfynske
-	case:
-		fmt.printf("%v\n", NOTVALIDSTATION)
-		os.exit(1)
 
+	for s in Stations {
+		if str.to_upper(s.name) == choice {
+			info("Station: ", choice)
+			return s
+		}
 	}
-	return station{}
-
+	fmt.printf("%v\n", NOTVALIDSTATION)
+	os.exit(1)
 }
 
 ask_output_filename :: proc(currentStation: ^station) {
@@ -251,6 +299,8 @@ main :: proc() {
 		if err == nil {
 			db(string, "Initialized output file.")
 		}}
+
+
 	os.write_entire_file(outputFile, transmute([]byte)(zonks))
 
 	if len(os.args) == 1 {
@@ -265,15 +315,17 @@ main :: proc() {
 
 
 	filelist := get_files(stationChoice.ext)
-	newFile := read_file(filelist)
+	newFile := read_file(filelist, stationChoice)
 	process_files(&newFile, stationChoice, outputFile)
 }
 
 
-read_file :: proc(files: []string) -> string {
+read_file :: proc(files: []string, currentStation: station) -> string {
 	joinedFiles: string
 
 	for file in files {
+		baseFilename := filepath.stem(file)
+
 		data, ok := os.read_entire_file(file, context.allocator)
 
 		if !ok {
@@ -282,6 +334,21 @@ read_file :: proc(files: []string) -> string {
 		defer delete(data, context.allocator)
 
 		it := string(data)
+
+		if currentStation.name == "Globus" {
+			lines := str.split_lines(string(data))
+
+			for &line, i in lines {
+				line, _ = str.replace_all(line, " - ", ";")
+				a := []string{baseFilename, line}
+				if line != "" {
+					lines[i] = str.join(a, "")
+				}
+				it = str.join(lines, "\n")
+			}
+
+
+		}
 
 		a := []string{joinedFiles, it}
 		joinedFiles = str.concatenate(a)
@@ -338,6 +405,8 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 	rejected: int
 	processed: int
 
+	if currentStation.name == "Globus" {SEPARATOR = ":"}
+
 	//create rejection file
 	os.write_entire_file(REJECTFILE, transmute([]byte)(zonks))
 
@@ -390,7 +459,8 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 		// construct output line from parts
 		if checkedLine != "REJECT" {
 			append(&parts, checkedLine[start:])
-			modifiedLine := str.join(parts[:], ";")
+			modifiedLine := str.join(parts[:], SEPARATOR)
+
 			outputLine := str.join([]string{modifiedLine, "\n"}, "")
 			_, err := os.write_string(outputFileHandle, outputLine)
 		}
