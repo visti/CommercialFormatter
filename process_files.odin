@@ -5,6 +5,19 @@ import "core:os"
 import str "core:strings"
 import "core:time"
 
+check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: station) -> string {
+	lowercaseLine := str.to_lower(line) // Convert entire line to lowercase
+
+	for word in currentStation.stopwords {
+		if str.contains(lowercaseLine, str.to_lower(word)) { 	// Compare in lowercase
+			a := []string{line, "\n"} // Write original line to rejected file
+			os.write_string(file, str.concatenate(a))
+			return "REJECT" // Stop early if a stopword is found
+		}
+	}
+	return line // Only return the line if NO stopwords matched
+}
+
 process_files :: proc(
 	file: ^string,
 	currentStation: station,
