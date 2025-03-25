@@ -1,5 +1,6 @@
 package komm_fmt
 
+import libc "core:c/libc/"
 import "core:fmt"
 import io "core:io"
 import "core:log"
@@ -14,6 +15,7 @@ import "core:unicode/utf8"
 DEBUG :: false
 
 NOW := time.now()
+CONVERT :: "/mnt/d/komm_fmt/lib/convert.py"
 REJECTDIR :: "/mnt/c/Users/eva/Gramex/Rapporteringer - Documents/Afviste_linjer_kom_land"
 SEPARATOR := ";"
 REJECTFILE := "rejected.csv"
@@ -43,12 +45,40 @@ station :: struct {
 	stopwords:    []string,
 	ext:          []string,
 	hasHeadlines: bool,
+	convert:      bool,
+	positional:   bool,
 	headlines:    []string,
 }
 
-Stations := []station{Bauer, Jyskfynske, Globus}
+Stations := []station{Bauer, Jyskfynske, Globus, Radio4}
+
+Radio4 := station {
+	name         = "Radio4",
+	convert      = true,
+	positional   = false,
+	filename     = "",
+	ext          = {"csv"},
+	hasHeadlines = true,
+	stopwords    = {},
+	headlines    = {
+		"DELETE",
+		"Date of Broadcasting",
+		"Track Starting Time",
+		"DELETE",
+		"Track Title",
+		"Main Artist",
+		"Track Playing Time",
+		"Record Label",
+		"Catalogue No",
+		"DELETE",
+		"DELETE",
+		"DELETE",
+	},
+}
+
 
 Globus := station {
+	positional   = true,
 	name         = "Globus",
 	filename     = "",
 	ext          = {"txt"},
@@ -101,6 +131,7 @@ Globus := station {
 }
 
 Jyskfynske := station {
+	positional   = true,
 	name         = "Jyskfynske",
 	ext          = {"txt", "den"},
 	hasHeadlines = false,
@@ -168,6 +199,7 @@ Jyskfynske := station {
 }
 
 Bauer := station {
+	positional   = true,
 	name         = "Bauer",
 	filename     = "",
 	positions    = {185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6},
@@ -194,15 +226,6 @@ Bauer := station {
 	headlines    = DEFAULT_HEADLINES,
 }
 
-strip_extension :: proc(filename: string) -> string {
-	// Split the filename by '.' and return the first part.
-	parts := str.split(filename, ".")
-	if len(parts) > 0 {
-		return parts[0]
-	}
-	return filename
-}
-
 printstation :: proc(station: station) {
 	fmt.printf(
 		"Name: %v\nPositions: %v\nFilename:%v\nStopwords:\n",
@@ -216,7 +239,8 @@ printstation :: proc(station: station) {
 	}
 }
 
-get_files :: proc(ext: []string) -> []string {
+get_files :: proc(currentStation: station) -> []string {
+	ext := currentStation.ext
 	filenames: [dynamic]string
 	cwd := os.get_current_directory()
 	f, err := os.open(cwd)
@@ -224,12 +248,13 @@ get_files :: proc(ext: []string) -> []string {
 	files, _ := os.read_dir(f, 1)
 
 	for fi in files {
-		for x in ext {
-			lowercaseFilename := str.to_lower(fi.name)
-			if str.contains(lowercaseFilename, x) {
-				append(&filenames, str.clone(fi.name))
-			}
-		}
+		if fi.name != currentStation.filename {
+			for x in ext {
+				lowercaseFilename := str.to_lower(fi.name)
+				if str.contains(lowercaseFilename, x) {
+					append(&filenames, str.clone(fi.name))
+				}
+			}}
 	}
 	if len(filenames) == 0 {
 		info("", "No eligible files found.")
@@ -285,8 +310,15 @@ ask_output_filename :: proc(currentStation: ^station) {
 
 // Main entry point.
 main :: proc() {
-	zonks: string = ""
+	EMPTY: string = ""
+
 	stationChoice := ask_user_stationtype()
+
+	if stationChoice.convert {
+		command := fmt.caprint("/bin/python3 /mnt/d/komm_fmt/lib/convert.py *xls*")
+		libc.system(command)
+	}
+
 
 	ask_output_filename(&stationChoice)
 	defer delete(stationChoice.filename)
@@ -304,7 +336,7 @@ main :: proc() {
 			db(string, "Initialized output file.")
 		}}
 
-	os.write_entire_file(outputFile, transmute([]byte)(zonks))
+	os.write_entire_file(outputFile, transmute([]byte)(EMPTY))
 
 	if len(os.args) == 1 {
 		fmt.printf("Provide at least one argument.\n")
@@ -315,8 +347,9 @@ main :: proc() {
 
 		return
 	}
-	filelist := get_files(stationChoice.ext)
+	filelist := get_files(stationChoice)
 	newFile := read_file(filelist, stationChoice)
+	defer delete(filelist)
 	process_files(&newFile, stationChoice, outputFile)
 }
 
@@ -330,9 +363,18 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 		if !ok {
 			panic("Could not read file.")
 		}
-		defer delete(data, context.allocator)
+
 
 		it := string(data)
+		defer delete(it, context.allocator)
+
+		if currentStation.hasHeadlines {
+			lines := str.split_lines(string(data))
+
+			for &line, i in lines {
+				it = str.join(lines[1:], "\n")
+			}
+		}
 
 		if currentStation.name == "Globus" {
 			lines := str.split_lines(string(data))
@@ -345,8 +387,9 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 				}
 				it = str.join(lines, "\n")
 			}
+			delete(lines, context.allocator)
 		}
-		a := []string{joinedFiles, it}
+		a := []string{joinedFiles, str.clone(it)}
 		joinedFiles = str.concatenate(a)
 	}
 	return joinedFiles
@@ -404,26 +447,34 @@ wrap_up :: proc(rejected: int, processed: int) {
 	fmt.printf("Rejected Lines: %v\n", rejected)
 }
 
-process_files :: proc(file: ^string, currentStation: station, outputFile: string) {
+process_files :: proc(
+	file: ^string,
+	currentStation: station,
+	outputFile: string,
+	loc := #caller_location,
+) {
 	modifiedLine: [dynamic]string
 	headlinesOut: string
-	zonks: string
+	EMPTY: string
 	rejected: int
 	processed: int
+	outputLine: string
 	currenttime, ok := time.time_to_datetime(NOW)
 	rejectPath := generate_rejection_filename(currentStation)
+	defer delete(rejectPath)
 
 	fmt.println("Rejection file saved to: ", rejectPath)
 	if currentStation.name == "Globus" {SEPARATOR = ":"}
 
 	//create rejection file
-	os.write_entire_file(rejectPath, transmute([]byte)(zonks))
+	os.write_entire_file(rejectPath, transmute([]byte)(EMPTY))
 
 	if !os.is_file(rejectPath) {
 		fmt.eprintln("ERROR: File was not created:", outputFile)
 		os.exit(1)
 	}
 	rejectionFile, rejectfile_open_error := os.open(rejectPath, 2)
+	defer os.close(rejectionFile)
 
 	if rejectfile_open_error != nil {
 		fmt.eprintln("Error creating rejectfile: ", rejectfile_open_error)
@@ -435,10 +486,8 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 	}
 	defer os.close(outputFileHandle)
 
-	if !currentStation.hasHeadlines {
-		write_headlines(currentStation, outputFileHandle)
-		write_headlines(currentStation, rejectionFile)
-	}
+	write_headlines(currentStation, outputFileHandle)
+	write_headlines(currentStation, rejectionFile)
 
 	if err != nil {
 		fmt.printf("%v\n", err)
@@ -451,32 +500,48 @@ process_files :: proc(file: ^string, currentStation: station, outputFile: string
 		checkedLine := check_for_stopwords(rejectionFile, line, currentStation)
 
 		if checkedLine != "REJECT" {
-			#reverse for &position in currentStation.positions {
-				lineLength := len(checkedLine)
-				if position > lineLength {
-					position = lineLength // Prevent out-of-bounds slicing
-				}
-				part := (string)(checkedLine)[start:position]
+			if currentStation.name == "Radio4" {
+				a := []string{checkedLine[:17], checkedLine[17:]}
+				checkedLine = str.join(a, ";")
+			}
 
-				trimmedPart := str.trim_space(part)
-				append(&parts, trimmedPart)
-				start = position
+
+			if currentStation.positional {
+				#reverse for &position in currentStation.positions {
+					lineLength := len(checkedLine)
+					if position > lineLength {
+						position = lineLength // Prevent out-of-bounds slicing
+					}
+					part := (string)(checkedLine)[start:position]
+
+					trimmedPart := str.trim_space(part)
+					append(&parts, trimmedPart)
+
+					start = position
+				}
 			}
 			processed += 1
 		} else {rejected += 1}
 
 		// construct output line from parts
 		if checkedLine != "REJECT" {
-			append(&parts, checkedLine[start:])
-			modifiedLine := str.join(parts[:], SEPARATOR)
+			if currentStation.positional {
+				append(&parts, checkedLine[start:])
+				modifiedLine := str.join(parts[:], SEPARATOR)
 
-			outputLine := str.join([]string{modifiedLine, "\n"}, "")
+				outputLine = str.join([]string{modifiedLine, "\n"}, "")
+				delete(modifiedLine)
+			} else {outputLine = str.join([]string{str.clone(checkedLine), "\n"}, "")}
+
 			_, err := os.write_string(outputFileHandle, outputLine)
+			delete(outputLine)
 		}
 
 		if err != nil {
 			fmt.printf("%v\n", err)
 		}
+
+		delete(parts)
 	}
 	wrap_up(rejected, processed)
 
