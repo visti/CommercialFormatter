@@ -15,7 +15,8 @@ import "core:unicode/utf8"
 DEBUG :: false
 
 NOW := time.now()
-CONVERT :: "/mnt/d/komm_fmt/lib/convert.py"
+CONVERT :: "/bin/python3 /mnt/d/komm_fmt/lib/convert.py *xls*"
+DELETE_COLS :: "/bin/python3 /mnt/d/komm_fmt/lib/delete_columns.py "
 REJECTDIR :: "/mnt/c/Users/eva/Gramex/Rapporteringer - Documents/Afviste_linjer_kom_land"
 SEPARATOR := ";"
 REJECTFILE := "rejected.csv"
@@ -315,8 +316,7 @@ main :: proc() {
 	stationChoice := ask_user_stationtype()
 
 	if stationChoice.convert {
-		command := fmt.caprint("/bin/python3 /mnt/d/komm_fmt/lib/convert.py *xls*")
-		libc.system(command)
+		libc.system(CONVERT)
 	}
 
 
@@ -363,7 +363,6 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 		if !ok {
 			panic("Could not read file.")
 		}
-
 
 		it := string(data)
 		defer delete(it, context.allocator)
@@ -414,6 +413,11 @@ clean_files :: proc(rejection_file: os.Handle, outputfile: os.Handle) {
 				fmt.printf("Removed empty file: %v\n", slicePath[len(slicePath) - 1])
 			}
 		}}
+
+	outputfile_path, _ := os.absolute_path_from_handle(outputfile)
+	b := []string{DELETE_COLS, outputfile_path}
+	command := fmt.caprintfln(str.join(b, " "))
+	libc.system(command)
 }
 
 generate_rejection_filename :: proc(currentStation: station) -> string {
@@ -504,7 +508,6 @@ process_files :: proc(
 				a := []string{checkedLine[:17], checkedLine[17:]}
 				checkedLine = str.join(a, ";")
 			}
-
 
 			if currentStation.positional {
 				#reverse for &position in currentStation.positions {
