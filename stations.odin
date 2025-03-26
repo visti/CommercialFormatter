@@ -41,7 +41,7 @@ Radio4 := station {
 	filename     = "",
 	ext          = {"csv"},
 	hasHeadlines = true,
-	stopwords    = {},
+	stopwords    = {"lydidentitet", "podcast only", "ikke udgivet", "jingle"},
 	headlines    = {
 		"DELETE",
 		"Date of Broadcasting",
