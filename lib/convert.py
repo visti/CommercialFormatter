@@ -2,6 +2,7 @@
 import sys
 import os
 import csv
+import shutil
 from openpyxl import load_workbook
 
 def convert_xlsx_to_csv(xlsx_path):
@@ -32,6 +33,18 @@ def main():
         if os.path.isfile(file_path):
             try:
                 convert_xlsx_to_csv(file_path)
+                
+                # Determine the directory of the original file
+                file_dir = os.path.dirname(file_path)
+                # Create the backup folder "bak" within the same directory
+                bak_folder = os.path.join(file_dir, "bak")
+                os.makedirs(bak_folder, exist_ok=True)
+                
+                # Build the destination path inside the backup folder
+                dest_path = os.path.join(bak_folder, os.path.basename(file_path))
+                # Move the original XLSX file to the backup folder
+                shutil.move(file_path, dest_path)
+                print(f"Moved '{file_path}' to '{dest_path}'")
             except Exception as e:
                 print(f"Error converting '{file_path}': {e}")
         else:
