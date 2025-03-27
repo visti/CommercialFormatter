@@ -16,7 +16,35 @@ DEBUG :: false
 
 // Main entry point.
 main :: proc() {
+	when ODIN_DEBUG {
+		delete_existing_file(MEMORY_LOG)
+		// Open log file in append mode (or use O_TRUNC if you prefer to overwrite)
+		logFile, err := os.open(MEMORY_LOG, os.O_CREATE | os.O_WRONLY | os.O_APPEND)
+		if err != nil {
+			// Fallback: if opening the file fails, print an error to stderr.
+			fmt.eprintf("Error opening memory leak log file: %v\n", err)
+		}
+		defer os.close(logFile)
 
+		track: mem.Tracking_Allocator
+		mem.tracking_allocator_init(&track, context.allocator)
+		context.allocator = mem.tracking_allocator(&track)
+
+		defer {
+			if len(track.allocation_map) > 0 {
+				for _, entry in track.allocation_map {
+					// Write leak info to the log file instead of printing
+					fmt.fprintf(logFile, "%v leaked %v bytes\n", entry.location, entry.size)
+				}
+			}
+			if len(track.bad_free_array) > 0 {
+				for entry in track.bad_free_array {
+					fmt.fprintf(logFile, "%v bad free at %v\n", entry.location, entry.memory)
+				}
+			}
+			mem.tracking_allocator_destroy(&track)
+		}
+	}
 	stationChoice := ask_user_stationtype()
 
 	if stationChoice.convert {
@@ -32,13 +60,8 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	if os.is_file(outputFile) {
-		err := os.remove(outputFile)
 
-		if err == nil {
-			db(string, "Initialized output file.")
-		}}
-
+	delete_existing_file(outputFile)
 	os.write_entire_file(outputFile, transmute([]byte)(EMPTY))
 
 	if len(os.args) == 1 {
