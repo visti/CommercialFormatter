@@ -10,14 +10,14 @@ def delete_podcast_only_rows(file_path):
     The file is edited in place.
     """
     # Read the CSV file using semicolon as the delimiter
-    df = pd.read_csv(file_path, delimiter=';')
+    df = pd.read_csv(file_path, delimiter=';', encoding='utf-8')
     
     if "Podcast only" in df.columns:
         # Remove rows where "Podcast only" equals "TRUE" (case-insensitive)
         df = df[~(df["Podcast only"].astype(str).str.upper() == "TRUE")]
     
     # Write the processed data back to the same file, preserving the semicolon delimiter
-    df.to_csv(file_path, index=False, sep=';')
+    df.to_csv(file_path, index=False, sep=';', encoding='utf-8')
     print(f"Rows with 'Podcast only' == TRUE have been removed. File updated: {file_path}")
 
 def main():

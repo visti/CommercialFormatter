@@ -23,10 +23,8 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 
 		if currentStation.hasHeadlines {
 			lines := str.split_lines(string(data))
+			it = str.join(lines[1:], "\n")
 
-			for &line, i in lines {
-				it = str.join(lines[1:], "\n")
-			}
 		}
 
 		if currentStation.name == "Globus" {
@@ -42,8 +40,14 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 			}
 			delete(lines, context.allocator)
 		}
-		a := []string{joinedFiles, str.clone(it)}
-		joinedFiles = str.concatenate(a)
+		clonedString := str.clone(it)
+		a := []string{joinedFiles, clonedString}
+		tempConcat := str.concatenate(a)
+		joinedFiles = str.clone(tempConcat)
+		delete(clonedString)
+		delete(tempConcat)
+
+
 	}
 	return joinedFiles
 }
@@ -65,7 +69,9 @@ clean_files :: proc(rejection_file: os.Handle, outputfile: os.Handle) {
 
 	outputfile_path, _ := os.absolute_path_from_handle(outputfile)
 	b := []string{DELETE_COLS, outputfile_path}
-	command := fmt.caprintfln(str.join(b, " "))
+	c := str.join(b, " ")
+	command := fmt.caprintfln(c)
+	defer delete(c)
 	libc.system(command)
 }
 
@@ -77,7 +83,9 @@ generate_rejection_filename :: proc(currentStation: station) -> string {
 	}
 
 	datestring := fmt.tprintf("%d-%d-%d", currentTime.year, currentTime.month, currentTime.day)
-	REJECTFILE := str.join([]string{datestring, "reject", currentStation.name}, "-")
+	tempPath := str.join([]string{datestring, "reject", currentStation.name}, "-")
+	REJECTFILE := tempPath
+	defer delete(tempPath)
 	rejectPath := filepath.join({REJECTDIR, REJECTFILE})
 	return str.join({rejectPath, "csv"}, ".")
 }
@@ -124,7 +132,8 @@ get_files :: proc(currentStation: station) -> []string {
 			for x in ext {
 				lowercaseFilename := str.to_lower(fi.name)
 				if str.contains(lowercaseFilename, x) {
-					append(&filenames, str.clone(fi.name))
+					append(&filenames, fi.name)
+
 				}
 			}}
 	}
@@ -133,13 +142,20 @@ get_files :: proc(currentStation: station) -> []string {
 		os.exit(1)
 	}
 
-	info("Found Files: ", str.join(filenames[:], ";"))
+	foundFiles := str.join(filenames[:], ";")
+	info("Found Files: ", foundFiles)
+	delete(foundFiles)
 	return filenames[:]
 }
 
 write_headlines :: proc(currentStation: station, file: os.Handle) {
-	headlinesJoined := str.join(currentStation.headlines, ";")
+	tempHeadlines := str.join(currentStation.headlines, ";")
+	headlinesJoined := tempHeadlines
+	defer delete(tempHeadlines)
 	a := []string{headlinesJoined, "\n"}
-	os.write_string(file, str.concatenate(a))
+	b := str.concatenate(a)
+	os.write_string(file, b)
+	delete(b)
+
 
 }

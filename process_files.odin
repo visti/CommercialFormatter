@@ -11,11 +11,13 @@ check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: stati
 	for word in currentStation.stopwords {
 		if str.contains(lowercaseLine, str.to_lower(word)) { 	// Compare in lowercase
 			a := []string{line, "\n"} // Write original line to rejected file
-			os.write_string(file, str.concatenate(a))
-			return "REJECT" // Stop early if a stopword is found
+			b := str.concatenate(a)
+			os.write_string(file, b)
+			delete(b)
+			return str.clone("REJECT") // Stop early if a stopword is found
 		}
 	}
-	return line // Only return the line if NO stopwords matched
+	return str.clone(line) // Only return the line if NO stopwords matched
 }
 
 process_files :: proc(
@@ -73,7 +75,9 @@ process_files :: proc(
 		if checkedLine != "REJECT" {
 			if currentStation.name == "Radio4" {
 				a := []string{checkedLine[:17], checkedLine[17:]}
-				checkedLine = str.join(a, ";")
+				temp := str.join(a, ";")
+				delete(checkedLine)
+				checkedLine = temp
 			}
 
 			if currentStation.positional {
@@ -101,16 +105,21 @@ process_files :: proc(
 
 				outputLine = str.join([]string{modifiedLine, "\n"}, "")
 				delete(modifiedLine)
-			} else {outputLine = str.join([]string{str.clone(checkedLine), "\n"}, "")}
+			} else {
+				clonedString := str.clone(checkedLine)
+				outputLine = str.join([]string{clonedString, "\n"}, "")
+				delete(clonedString)
+			}
 
 			_, err := os.write_string(outputFileHandle, outputLine)
 			delete(outputLine)
 		}
 
+		delete(checkedLine)
+
 		if err != nil {
 			fmt.printf("%v\n", err)
 		}
-
 		delete(parts)
 	}
 	wrap_up(rejected, processed)
