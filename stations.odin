@@ -32,7 +32,32 @@ station :: struct {
 	headlines:    []string,
 }
 
-Stations := []station{Bauer, Jyskfynske, Globus, Radio4}
+Stations := []station{Bauer, Jyskfynske, Globus, Radio4, ANR}
+
+ANR := station {
+	name         = "ANR",
+	positional   = true,
+	positions    = {297, 291, 288, 267, 213, 200, 149, 98, 47, 26, 20, 11},
+	ext          = {"den"},
+	hasHeadlines = true,
+	stopwords    = {" ANR ", "[SS]", "REKLAME", " PROMO ", "VEJR [", "LILLE FREDAG"},
+	headlines    = {
+		"Date of Broadcasting", // 11
+		"Track starting time", // 20
+		"Track playing time", // 26
+		"DELETE",
+		"Album Title", // 47
+		"Track Title", // 98
+		"Main Artist", // 149
+		"ISRC-code", // ISRC
+		"Record Label", // 200
+		"Catalogue No.", // 206
+		"Country of Recording", // 267
+		"Year of First Release", // 288
+		"DELETE", // 291
+	},
+}
+
 
 Radio4 := station {
 	name         = "Radio4",
