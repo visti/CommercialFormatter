@@ -5,10 +5,15 @@ import "core:os"
 import str "core:strings"
 import "core:time"
 
-check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: station) -> string {
+check_for_stopwords :: proc(
+	file: os.Handle,
+	line: string,
+	currentStation: station,
+	stopwords: [dynamic]string,
+) -> string {
 	lowercaseLine := str.to_lower(line) // Convert entire line to lowercase
 
-	for word in currentStation.stopwords {
+	for word in stopwords {
 		if str.contains(lowercaseLine, str.to_lower(word)) { 	// Compare in lowercase
 			a := []string{line, "\n"} // Write original line to rejected file
 			b := str.concatenate(a)
@@ -16,6 +21,7 @@ check_for_stopwords :: proc(file: os.Handle, line: string, currentStation: stati
 			delete(b)
 			return str.clone("REJECT") // Stop early if a stopword is found
 		}
+
 	}
 	return str.clone(line) // Only return the line if NO stopwords matched
 }
@@ -34,7 +40,11 @@ process_files :: proc(
 	outputLine: string
 	currenttime, ok := time.time_to_datetime(NOW)
 	rejectPath := generate_rejection_filename(currentStation)
+	stops: [dynamic]string
 	defer delete(rejectPath)
+
+
+	fmt.println(stops)
 
 	fmt.println("Rejection file saved to: ", rejectPath)
 	if currentStation.name == "Globus" {SEPARATOR = ":"}
@@ -72,11 +82,19 @@ process_files :: proc(
 		fmt.printf("%v\n", err)
 	}
 
+	//make stopwords
+	for word in DEFAULT_STOPWORDS {
+		append(&stops, word)
+	}
+	for word in currentStation.stopwords {
+		append(&stops, word)
+	}
+
 	for line in str.split_lines_iterator(file) {
 		parts: [dynamic]string
 		start: int
 
-		checkedLine := check_for_stopwords(rejectionFile, line, currentStation)
+		checkedLine := check_for_stopwords(rejectionFile, line, currentStation, stops)
 
 		if checkedLine != "REJECT" {
 			if currentStation.name == "Radio4" {

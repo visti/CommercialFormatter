@@ -2,7 +2,7 @@ package komm_fmt
 
 import "core:time"
 
-
+REPLACES :: []string{" - ABC PowerHit"}
 NOW := time.now()
 CONVERT :: "/bin/python3 /mnt/d/commercial_formatter/lib/convert.py *xls*"
 MEMORY_LOG :: "memory_leak.log"
