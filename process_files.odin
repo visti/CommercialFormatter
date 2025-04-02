@@ -40,12 +40,18 @@ process_files :: proc(
 	if currentStation.name == "Globus" {SEPARATOR = ":"}
 
 	//create rejection file
-	os.write_entire_file(rejectPath, transmute([]byte)(EMPTY))
-
-	if !os.is_file(rejectPath) {
-		fmt.eprintln("ERROR: File was not created:", outputFile)
+	rejCreateOK := os.write_entire_file_or_err(rejectPath, transmute([]byte)(EMPTY))
+	if rejCreateOK != nil {
+		fmt.eprintln("ERROR: Failed to write rejection file:", rejCreateOK)
 		os.exit(1)
 	}
+
+	if !os.is_file(rejectPath) {
+		fmt.println(rejectPath)
+		fmt.eprintln("ERROR: File was not created:", rejectPath)
+		os.exit(1)
+	}
+
 	rejectionFile, rejectfile_open_error := os.open(rejectPath, 2)
 	defer os.close(rejectionFile)
 
