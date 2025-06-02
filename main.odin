@@ -43,7 +43,7 @@ main :: proc() {
 				}
 			}
 			mem.tracking_allocator_destroy(&track)
-		}
+		} 
 	}
 	stationChoice := ask_user_stationtype()
 

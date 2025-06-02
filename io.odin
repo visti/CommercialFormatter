@@ -24,7 +24,6 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 		if currentStation.hasHeadlines {
 			lines := str.split_lines(string(data))
 			it = str.join(lines[1:], "\n")
-
 		}
 
 		if currentStation.name == "Globus" {
@@ -156,6 +155,4 @@ write_headlines :: proc(currentStation: station, file: os.Handle) {
 	b := str.concatenate(a)
 	os.write_string(file, b)
 	delete(b)
-
-
 }
