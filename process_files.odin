@@ -5,6 +5,7 @@ import "core:os"
 import str "core:strings"
 import "core:time"
 
+
 check_for_stopwords :: proc(
 	file: os.Handle,
 	line: string,

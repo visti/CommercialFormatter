@@ -24,6 +24,7 @@ read_file :: proc(files: []string, currentStation: station) -> string {
 		if currentStation.hasHeadlines {
 			lines := str.split_lines(string(data))
 			it = str.join(lines[1:], "\n")
+
 		}
 
 		if currentStation.name == "Globus" {
@@ -82,11 +83,11 @@ generate_rejection_filename :: proc(currentStation: station) -> string {
 	}
 
 	datestring := fmt.tprintf("%d-%d-%d", currentTime.year, currentTime.month, currentTime.day)
-	tempPath := str.join([]string{datestring, "reject", currentStation.name}, "-")
+	tempPath := str.join([]string{datestring, "reject", currentStation.filename}, "-")
 	REJECTFILE := tempPath
 	defer delete(tempPath)
 	rejectPath := filepath.join({REJECTDIR, REJECTFILE})
-	return str.join({rejectPath, "csv"}, ".")
+	return rejectPath
 }
 ask_user_stationtype :: proc() -> station {
 	choice := str.to_upper(os.args[1])
@@ -155,4 +156,6 @@ write_headlines :: proc(currentStation: station, file: os.Handle) {
 	b := str.concatenate(a)
 	os.write_string(file, b)
 	delete(b)
+
+
 }
