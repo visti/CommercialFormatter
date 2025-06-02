@@ -50,9 +50,9 @@ DEFAULT_HEADLINES :: []string {
 	"Track Title",
 	"Main Artist",
 	"Record Label",
-	"GramexID",
-	"Side",
-	"Tracknummer",
+	"DELETE", // no longer ingesting Gramex-ID
+	"DELETE",
+	"DELETE",
 	"Country of Recording",
 	"Year of first release",
 	"ISRC-Code",
