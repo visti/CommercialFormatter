@@ -8,6 +8,7 @@ DEFAULT_STOPWORDS :: []string {
 	"rasmus sk�tt",
 	"julemix",
 	"dj pool",
+	"Generic #",
 	"FutureRecords",
 	"dj deep",
 	"megamix",
