@@ -98,13 +98,6 @@ process_files :: proc(
 		checkedLine := check_for_stopwords(rejectionFile, line, currentStation, stops)
 
 		if checkedLine != "REJECT" {
-			if currentStation.name == "Radio4" {
-				a := []string{checkedLine[:17], checkedLine[17:]}
-				temp := str.join(a, ";")
-				delete(checkedLine)
-				checkedLine = temp
-			}
-
 			if currentStation.positional {
 				#reverse for &position in currentStation.positions {
 					lineLength := len(checkedLine)
