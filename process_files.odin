@@ -2,9 +2,8 @@ package komm_fmt
 
 import "core:fmt"
 import "core:os"
+import filepath "core:path/filepath"
 import str "core:strings"
-import "core:time"
-
 
 check_for_stopwords :: proc(
 	file: os.Handle,
@@ -12,19 +11,30 @@ check_for_stopwords :: proc(
 	currentStation: station,
 	stopwords: [dynamic]string,
 ) -> string {
-	lowercaseLine := str.to_lower(line) // Convert entire line to lowercase
+	lowercaseLine := str.to_lower(line)
 
 	for word in stopwords {
-		if str.contains(lowercaseLine, str.to_lower(word)) { 	// Compare in lowercase
-			a := []string{line, "\n"} // Write original line to rejected file
+		if str.contains(lowercaseLine, str.to_lower(word)) {
+			a := []string{line, "\n"}
 			b := str.concatenate(a)
 			os.write_string(file, b)
 			delete(b)
-			return str.clone("REJECT") // Stop early if a stopword is found
+			return str.clone("REJECT")
 		}
-
 	}
-	return str.clone(line) // Only return the line if NO stopwords matched
+	return str.clone(line)
+}
+
+// Build "<output>_additional<ext>" next to the main output
+make_additional_filename :: proc(base: string) -> string {
+	ext := filepath.ext(base)
+	stem := filepath.stem(base)
+	dir := filepath.dir(base)
+	with_postfix := str.join([]string{stem, ADDITIONAL_POSTFIX, ext}, "")
+	if dir != "" {
+		return str.join([]string{dir, "/", with_postfix}, "")
+	}
+	return with_postfix
 }
 
 process_files :: proc(
@@ -38,52 +48,67 @@ process_files :: proc(
 	EMPTY: string
 	rejected: int
 	processed: int
-	outputLine: string
-	currenttime, ok := time.time_to_datetime(NOW)
-	rejectPath := generate_rejection_filename(currentStation)
-	stops: [dynamic]string
-	defer delete(rejectPath)
 
+	// Additional routing controls
+	additionalFileHandle: os.Handle
+	hasAdditional := (len(ADDITIONAL_FILTER) > 0)
 
-	fmt.println(stops)
-
-	fmt.println("Rejection file saved to: ", rejectPath)
-	if currentStation.name == "Globus" {SEPARATOR = ":"}
-
-	//create rejection file
-	rejCreateOK := os.write_entire_file_or_err(rejectPath, transmute([]byte)(EMPTY))
-	if rejCreateOK != nil {
-		fmt.eprintln("ERROR: Failed to write rejection file:", rejCreateOK)
-		os.exit(1)
+	// Keep existing behavior for separator
+	if currentStation.name == "Globus" {
+		SEPARATOR = ":"
+	} else {
+		SEPARATOR = ";"
 	}
 
-	if !os.is_file(rejectPath) {
-		fmt.println(rejectPath)
-		fmt.eprintln("ERROR: File was not created:", rejectPath)
-		os.exit(1)
-	}
-
-	rejectionFile, rejectfile_open_error := os.open(rejectPath, 2)
-	defer os.close(rejectionFile)
-
-	if rejectfile_open_error != nil {
-		fmt.eprintln("Error creating rejectfile: ", rejectfile_open_error)
-	}
-
+	// Prepare output file
 	outputFileHandle, err := os.open(outputFile, os.O_CREATE | os.O_WRONLY | os.O_TRUNC)
 	if err != nil {
 		fmt.eprintln("ERROR: could not create output file:", err)
 	}
 	defer os.close(outputFileHandle)
 
+	// Create rejection file (empty) and open handle
+	rejectPath := generate_rejection_filename(currentStation)
+	rejCreateOK := os.write_entire_file_or_err(rejectPath, transmute([]byte)(EMPTY))
+	if rejCreateOK != nil {
+		fmt.eprintln("ERROR: Failed to write rejection file:", rejCreateOK)
+		os.exit(1)
+	}
+	if !os.is_file(rejectPath) {
+		fmt.eprintln("ERROR: File was not created:", rejectPath)
+		os.exit(1)
+	}
+	rejectionFile, rejectfile_open_error := os.open(rejectPath, 2)
+	defer os.close(rejectionFile)
+	if rejectfile_open_error != nil {
+		fmt.eprintln("Error creating rejectfile: ", rejectfile_open_error)
+		os.exit(1)
+	}
+
+	// Open additional file if enabled (no handle shadowing)
+	if hasAdditional {
+		additionalPath := make_additional_filename(outputFile)
+
+		h, addErr := os.open(additionalPath, os.O_CREATE | os.O_WRONLY | os.O_TRUNC)
+		if addErr != nil {
+			fmt.eprintln("ERROR: could not create additional file:", addErr)
+			os.exit(1)
+		}
+		additionalFileHandle = h
+
+		// Info so we can see target path & confirm handle
+		fmt.println("Additional file opened for write:", additionalPath)
+
+		// Same headlines as standard output
+		write_headlines(currentStation, additionalFileHandle)
+	}
+
+	// Write headlines to output and rejection (preserve current behavior)
 	write_headlines(currentStation, outputFileHandle)
 	write_headlines(currentStation, rejectionFile)
 
-	if err != nil {
-		fmt.printf("%v\n", err)
-	}
-
-	//make stopwords
+	// Build stopword list: DEFAULT + station-specific
+	stops: [dynamic]string
 	for word in DEFAULT_STOPWORDS {
 		append(&stops, word)
 	}
@@ -98,29 +123,32 @@ process_files :: proc(
 		checkedLine := check_for_stopwords(rejectionFile, line, currentStation, stops)
 
 		if checkedLine != "REJECT" {
+			// After stopword check: handle additional routing (case-insensitive)
+			routeToAdditional := false
+			if hasAdditional {
+				cl := str.to_lower(checkedLine)
+				af := str.to_lower(ADDITIONAL_FILTER)
+				routeToAdditional = str.contains(cl, af)
+			}
+
 			if currentStation.positional {
 				#reverse for &position in currentStation.positions {
 					lineLength := len(checkedLine)
 					if position > lineLength {
-						position = lineLength // Prevent out-of-bounds slicing
+						position = lineLength
 					}
 					part := (string)(checkedLine)[start:position]
-
 					trimmedPart := str.trim_space(part)
 					append(&parts, trimmedPart)
-
 					start = position
 				}
 			}
+
 			processed += 1
-		} else {rejected += 1}
+			outputLine: string
 
-		// construct output line from parts
-		if checkedLine != "REJECT" {
 			if currentStation.positional {
-				append(&parts, checkedLine[start:])
 				modifiedLine := str.join(parts[:], SEPARATOR)
-
 				outputLine = str.join([]string{modifiedLine, "\n"}, "")
 				delete(modifiedLine)
 			} else {
@@ -129,17 +157,29 @@ process_files :: proc(
 				delete(clonedString)
 			}
 
-			_, err := os.write_string(outputFileHandle, outputLine)
+			if routeToAdditional {
+				if hasAdditional {
+					_, werr := os.write_string(additionalFileHandle, outputLine)
+					if werr != nil {
+						fmt.printf("WRITE additional error: %v\n", werr)
+					}
+				}
+			} else {
+				_, werr := os.write_string(outputFileHandle, outputLine)
+				if werr != nil {
+					fmt.printf("WRITE output error: %v\n", werr)
+				}
+			}
+
 			delete(outputLine)
+			delete(parts)
+		} else {
+			rejected += 1
 		}
 
 		delete(checkedLine)
-
-		if err != nil {
-			fmt.printf("%v\n", err)
-		}
-		delete(parts)
 	}
+
 	wrap_up(rejected, processed)
 
 	clean_files(rejectionFile, outputFileHandle)
