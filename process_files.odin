@@ -51,6 +51,7 @@ process_files :: proc(
 
 	// Additional routing controls
 	additionalFileHandle: os.Handle
+	additionalPath: string
 	hasAdditional := (len(ADDITIONAL_FILTER) > 0)
 
 	// Keep existing behavior for separator
@@ -87,7 +88,7 @@ process_files :: proc(
 
 	// Open additional file if enabled (no handle shadowing)
 	if hasAdditional {
-		additionalPath := make_additional_filename(outputFile)
+		additionalPath = make_additional_filename(outputFile)
 
 		h, addErr := os.open(additionalPath, os.O_CREATE | os.O_WRONLY | os.O_TRUNC)
 		if addErr != nil {
@@ -179,8 +180,36 @@ process_files :: proc(
 
 		delete(checkedLine)
 	}
-
 	wrap_up(rejected, processed)
 
+	// --- CLEANUP PHASE ---
+
+	if hasAdditional {
+		os.close(additionalFileHandle)
+
+		// Check if the additional file exists
+		exists, ferr := os.stat(additionalPath)
+		if ferr == nil {
+			contents, ok := os.read_entire_file(additionalPath)
+			if ok {
+				// Convert []u8 → string for counting
+				text := string(contents)
+				line_count := str.count(text, "\n")
+				if line_count <= 1 {
+					del_err := os.remove(additionalPath)
+					if del_err == nil {
+						fmt.printf("Deleted empty additional file: %s\n", additionalPath)
+					} else {
+						fmt.printf("Failed to delete %s: %v\n", additionalPath, del_err)
+					}
+				}
+				delete(text)
+			} else {
+				fmt.printf("Failed to read %s: %v\n", additionalPath)
+			}
+		}
+	}
+
 	clean_files(rejectionFile, outputFileHandle)
+
 }
