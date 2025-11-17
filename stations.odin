@@ -30,6 +30,11 @@ DEFAULT_STOPWORDS :: []string {
 	"mix cast",
 	"mastermix",
 	"retro mix",
+	"top 90s",
+	"summer mix",
+	"megasession",
+	"club mix",
+	"rolf warming",
 	"summerparty",
 	"dancemix",
 	"in the mix",
@@ -154,7 +159,7 @@ Radio4 := station {
 
 
 Globus := station {
-	positional   = true,
+	positional   = false,
 	name         = "Globus",
 	filename     = "",
 	ext          = {"txt"},
