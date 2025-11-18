@@ -45,32 +45,67 @@ main :: proc() {
 			mem.tracking_allocator_destroy(&track)
 		}
 	}
-	stationChoice := ask_user_stationtype()
+	
 
-	// Parse CLI flags like --additional=Boulevard
+
+
+	
+	// -----------------------------------------
+	// Handle help flag first: -h / --help
+	// This must run BEFORE checking the station argument.
+	// -----------------------------------------
 	for i := 1; i < len(os.args); i += 1 {
 		arg := os.args[i]
-		if str.has_prefix(arg, "--additional=") {
-			// 13 = len("--additional=")
-			value := (string)(arg)[13:]
-			if len(value) > 0 {
-				ADDITIONAL_FILTER = value
-			}
-		}
-		// Optional: let users change postfix too
-		if str.has_prefix(arg, "--additional-postfix=") {
-			value := (string)(arg)[21:] // len("--additional-postfix=") = 21
-			if len(value) > 0 {
-				// You can switch this to a var if you want true runtime postfix changes
-				// For now, keep constant unless you want to promote ADDITIONAL_POSTFIX to :string
-				// ADDITIONAL_POSTFIX = value
-				fmt.printf(
-					"Note: --additional-postfix is compiled as constant; ignore if unchanged.\n",
-				)
-			}
+		if arg == "-h" || arg == "--help" {
+			fmt.println("Commercial Formatter — Usage Guide")
+			fmt.println("----------------------------------")
+			fmt.println("Syntax:")
+			fmt.println("    komm_fmt <station> [options]")
+			fmt.println()
+			fmt.println("Required:")
+			fmt.println("    <station>                 Name of station as defined in stations.odin")
+			fmt.println()
+			fmt.println("Options:")
+			fmt.println("    --additional=<filter>     Routes matching lines to an additional CSV")
+			fmt.println("    --additional-postfix=<p>  Postfix for additional output file")
+			fmt.println("    --no-stopwords            Disable stopword rejection entirely")
+			fmt.println("    -h, --help                Show this help message and exit")
+			fmt.println()
+			fmt.println("Examples:")
+			fmt.println("    komm_fmt Globus")
+			fmt.println("    komm_fmt Globus --no-stopwords")
+			fmt.println("    komm_fmt Radio4 --additional=Boulevard")
+			fmt.println("    komm_fmt Bauer --additional=Hits --no-stopwords")
+			fmt.println()
+			os.exit(0)
 		}
 	}
 
+	// -----------------------------------------
+	// Parse functional CLI flags
+	// Start at index 2 = skip program name + station name
+	// -----------------------------------------
+	for i := 2; i < len(os.args); i += 1 {
+		arg := os.args[i]
+
+		if str.has_prefix(arg, "--additional=") {
+			value := (string)(arg)[13:]  // len("--additional=")=13
+			if len(value) > 0 {
+				ADDITIONAL_FILTER = value
+			}
+
+		} else if str.has_prefix(arg, "--additional-postfix=") {
+			value := (string)(arg)[21:]  // len("--additional-postfix=")=21
+			if len(value) > 0 {
+				fmt.println("Note: --additional-postfix is compiled as a constant unless promoted to a variable.")
+			}
+
+		} else if arg == "--no-stopwords" {
+			USE_STOPWORDS = false
+		}
+	}
+	
+	stationChoice := ask_user_stationtype()
 
 	if stationChoice.convert {
 		libc.system(CONVERT)
@@ -98,6 +133,11 @@ main :: proc() {
 
 		return
 	}
+	
+	if !USE_STOPWORDS {
+    	fmt.println("Stopword filtering DISABLED (--no-stopwords)")
+	}
+
 	filelist := get_files(stationChoice)
 	newFile := read_file(filelist, stationChoice)
 	defer delete(filelist)

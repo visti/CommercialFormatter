@@ -15,3 +15,4 @@ REJECTFILE := "rejected.csv"
 EMPTY: string = ""
 // ERROR MESSAGES
 NOTVALIDSTATION :: "ERROR: No valid station selected as argument."
+USE_STOPWORDS: bool = true

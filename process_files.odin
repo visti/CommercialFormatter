@@ -48,6 +48,7 @@ process_files :: proc(
     EMPTY: string
     rejected: int
     processed: int
+    checkedLine: string
 
     // Additional routing controls
     additionalFileHandle: os.Handle
@@ -133,7 +134,11 @@ process_files :: proc(
     for line in str.split_lines_iterator(file) {
         parts: [dynamic]string
 
-        checkedLine := check_for_stopwords(rejectionFile, line, currentStation, stops)
+        if USE_STOPWORDS {
+            checkedLine = check_for_stopwords(rejectionFile, line, currentStation, stops)
+        } else {
+            checkedLine = str.clone(line)
+        }
 
         if checkedLine != "REJECT" {
             // After stopword check: handle additional routing (case-insensitive)
