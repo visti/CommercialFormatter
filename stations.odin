@@ -1,8 +1,6 @@
 package komm_fmt
 
 import "core:fmt"
-import "core:strings"
-
 
 DEFAULT_STOPWORDS :: []string {
 	"rasmus sk�tt",
