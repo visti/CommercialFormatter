@@ -1,0 +1,151 @@
+# Station Configuration
+# Each station defines how to parse and process its input files
+# Edit this file to add/modify stations without changing code
+
+# Headlines marked "DELETE" will be removed from final output by delete_columns.py
+
+[bauer]
+name = "Bauer"
+aliases = ["radio100", "100fm", "thevoice", "voice", "myrock", "pop"]
+extensions = ["txt"]
+positional = true
+has_headlines = false
+convert = false
+separator = ";"
+# Positions define fixed-width column boundaries (will be auto-sorted)
+positions = [185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6]
+headlines = [
+    "Date of Broadcasting",
+    "Track starting time",
+    "Track playing time",
+    "Local-ID",
+    "Track Title",
+    "Main Artist",
+    "Record Label",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+    "Country of Recording",
+    "Year of first release",
+    "ISRC-Code",
+]
+
+[jyskfynske]
+name = "Jyskfynske"
+aliases = ["gofm", "skive", "solo", "alfa", "silkeborg", "radiom", "jfm"]
+extensions = ["txt", "den"]
+positional = true
+has_headlines = false
+convert = false
+separator = ";"
+positions = [297, 291, 288, 267, 206, 200, 149, 98, 47, 26, 20, 11]
+headlines = [
+    "Date of Broadcasting",
+    "Track starting time",
+    "Track playing time",
+    "DELETE",
+    "Album Title",
+    "Track Title",
+    "Main Artist",
+    "DELETE",
+    "Record Label",
+    "Catalogue No.",
+    "Country of Recording",
+    "Year of First Release",
+    "DELETE",
+]
+
+[globus]
+name = "Globus"
+aliases = []
+extensions = ["txt"]
+positional = false
+has_headlines = false
+convert = false
+separator = ":"
+positions = [15, 13]
+headlines = [
+    "Date of Broadcasting",
+    "Track starting time",
+    "Track playing time",
+    "Main Artist",
+    "Track Title",
+]
+
+[radio4]
+name = "Radio4"
+aliases = ["r4", "radio 4"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+convert = true
+separator = ";"
+positions = []
+headlines = [
+    "Date of Broadcasting",
+    "Track Starting Time",
+    "Track Playing Time",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+    "Album Title",
+    "Track Title",
+    "Main Artist",
+    "ISRC-Code",
+    "Record Label",
+    "Catalogue No",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+]
+
+[anr]
+name = "ANR"
+aliases = ["radionordjylland", "nordjylland"]
+extensions = ["den"]
+positional = true
+has_headlines = true
+convert = false
+separator = ";"
+positions = [297, 291, 288, 267, 213, 200, 149, 98, 47, 26, 20, 11]
+headlines = [
+    "Date of Broadcasting",
+    "Track starting time",
+    "Track playing time",
+    "DELETE",
+    "Album Title",
+    "Track Title",
+    "Main Artist",
+    "ISRC-code",
+    "Record Label",
+    "Catalogue No.",
+    "Country of Recording",
+    "Year of First Release",
+    "DELETE",
+]
+
+[abc]
+name = "ABC"
+aliases = []
+extensions = ["txt"]
+positional = false
+has_headlines = false
+convert = false
+separator = ";"
+positions = []
+headlines = [
+    "Date of Broadcasting",
+    "Track starting time",
+    "Track playing time",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+    "Track Title",
+    "Main Artist",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+    "DELETE",
+]

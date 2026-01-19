@@ -1,3 +1,8 @@
 /*.log
 /bak/*
 /commercial_formatter
+
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
