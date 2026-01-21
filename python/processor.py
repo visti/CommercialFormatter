@@ -190,6 +190,7 @@ def format_date_field(date_str: str) -> str:
     Handles:
     - YYMMDD (6 digits) -> DD-MM-YYYY
     - YYYY-MM-DD -> DD-MM-YYYY
+    - DD.MM.YYYY -> DD-MM-YYYY
     - DD-MM-YYYY -> unchanged
     """
     date_str = date_str.strip()
@@ -208,6 +209,10 @@ def format_date_field(date_str: str) -> str:
         if len(parts) == 3 and len(parts[0]) == 4:
             yyyy, mm, dd = parts
             return f"{dd}-{mm}-{yyyy}"
+
+    # Handle DD.MM.YYYY format (convert to DD-MM-YYYY)
+    if len(date_str) == 10 and date_str[2] == "." and date_str[5] == ".":
+        return date_str.replace(".", "-")
 
     # Already DD-MM-YYYY or unknown format, return as-is
     return date_str
