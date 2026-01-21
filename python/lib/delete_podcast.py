@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import sys
-import os
 import pandas as pd
+
+from utils import get_file_path_from_args, validate_csv_file
+
 
 def delete_podcast_only_rows(file_path):
     """
@@ -21,24 +23,16 @@ def delete_podcast_only_rows(file_path):
     print(f"Rows with 'Podcast only' == TRUE have been removed. File updated: {file_path}")
 
 def main():
-    if len(sys.argv) < 2:
+    file_path = get_file_path_from_args()
+    if not file_path:
         print("Usage: python delete_podcast_rows_in_place.py <filename>")
         sys.exit(1)
-    
-    # Join all arguments into one string in case the filename contains spaces
-    file_path = " ".join(sys.argv[1:]).strip()
-    
-    if os.path.isfile(file_path):
-        base, ext = os.path.splitext(file_path)
-        if ext.lower() == '.csv':
-            try:
-                delete_podcast_only_rows(file_path)
-            except Exception as e:
-                print(f"Error processing '{file_path}': {e}")
-        else:
-            print(f"Skipping non-CSV file: '{file_path}'")
-    else:
-        print(f"File not found: '{file_path}'")
+
+    if validate_csv_file(file_path):
+        try:
+            delete_podcast_only_rows(file_path)
+        except Exception as e:
+            print(f"Error processing '{file_path}': {e}")
 
 if __name__ == "__main__":
     main()

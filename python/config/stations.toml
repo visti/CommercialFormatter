@@ -15,24 +15,24 @@ separator = ";"
 # Positions define fixed-width column boundaries (will be auto-sorted)
 positions = [185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6]
 headlines = [
-    "Date of Broadcasting",
-    "Track starting time",
-    "Track playing time",
-    "Local-ID",
-    "Track Title",
-    "Main Artist",
-    "Record Label",
-    "DELETE",
-    "DELETE",
-    "DELETE",
-    "Country of Recording",
-    "Year of first release",
-    "ISRC-Code",
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "Local-ID",
+  "Track Title",
+  "Main Artist",
+  "Record Label",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "Country of Recording",
+  "Year of First Release",
+  "ISRC-Code",
 ]
 
 [jyskfynske]
 name = "Jyskfynske"
-aliases = ["gofm", "skive", "solo", "alfa", "silkeborg", "radiom", "jfm"]
+aliases = ["jfm", "vlr", "viborg", "classicfm", "skala"]
 extensions = ["txt", "den"]
 positional = true
 has_headlines = false
@@ -40,19 +40,19 @@ convert = false
 separator = ";"
 positions = [297, 291, 288, 267, 206, 200, 149, 98, 47, 26, 20, 11]
 headlines = [
-    "Date of Broadcasting",
-    "Track starting time",
-    "Track playing time",
-    "DELETE",
-    "Album Title",
-    "Track Title",
-    "Main Artist",
-    "DELETE",
-    "Record Label",
-    "Catalogue No.",
-    "Country of Recording",
-    "Year of First Release",
-    "DELETE",
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "DELETE",
+  "Album Title",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+  "Record Label",
+  "Catalogue No.",
+  "Country of Recording",
+  "Year of First Release",
+  "DELETE",
 ]
 
 [globus]
@@ -65,11 +65,11 @@ convert = false
 separator = ":"
 positions = [15, 13]
 headlines = [
-    "Date of Broadcasting",
-    "Track starting time",
-    "Track playing time",
-    "Main Artist",
-    "Track Title",
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "Main Artist",
+  "Track Title",
 ]
 
 [radio4]
@@ -82,26 +82,26 @@ convert = true
 separator = ";"
 positions = []
 headlines = [
-    "Date of Broadcasting",
-    "Track Starting Time",
-    "Track Playing Time",
-    "DELETE",
-    "DELETE",
-    "DELETE",
-    "Album Title",
-    "Track Title",
-    "Main Artist",
-    "ISRC-Code",
-    "Record Label",
-    "Catalogue No",
-    "DELETE",
-    "DELETE",
-    "DELETE",
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "Album Title",
+  "Track Title",
+  "Main Artist",
+  "ISRC-Code",
+  "Record Label",
+  "Catalogue No.",
+  "DELETE",
+  "DELETE",
+  "DELETE",
 ]
 
 [anr]
 name = "ANR"
-aliases = ["radionordjylland", "nordjylland"]
+aliases = ["nordjyske", "radionordjylland", "nordjylland"]
 extensions = ["den"]
 positional = true
 has_headlines = true
@@ -109,43 +109,72 @@ convert = false
 separator = ";"
 positions = [297, 291, 288, 267, 213, 200, 149, 98, 47, 26, 20, 11]
 headlines = [
-    "Date of Broadcasting",
-    "Track starting time",
-    "Track playing time",
-    "DELETE",
-    "Album Title",
-    "Track Title",
-    "Main Artist",
-    "ISRC-code",
-    "Record Label",
-    "Catalogue No.",
-    "Country of Recording",
-    "Year of First Release",
-    "DELETE",
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "DELETE",
+  "Album Title",
+  "Track Title",
+  "Main Artist",
+  "ISRC-Code",
+  "Record Label",
+  "Catalogue No.",
+  "Country of Recording",
+  "Year of First Release",
+  "DELETE",
 ]
 
 [abc]
 name = "ABC"
-aliases = []
-extensions = ["txt"]
+aliases = ["solo", "gofm", "radiom", "silkeborg"]
+extensions = ["txt", "csv"]
 positional = false
 has_headlines = false
 convert = false
 separator = ";"
 positions = []
 headlines = [
-    "Date of Broadcasting",
-    "Track starting time",
-    "Track playing time",
-    "DELETE",
-    "DELETE",
-    "DELETE",
-    "DELETE",
-    "Track Title",
-    "Main Artist",
-    "DELETE",
-    "DELETE",
-    "DELETE",
-    "DELETE",
-    "DELETE",
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+]
+
+[skive]
+name = "Skive"
+aliases = ["radio skive"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+skip_lines = 2  # Skip "Log udskrift..." line AND column headers
+convert = false
+separator = ";"
+positions = []
+# Original: Tidspunkt;MelodiTitel;Kunstner;Komponist;Forfatter;Indspil.år;Indspil.land;Nationalitet;Pladeselsk.;Katalog Nr;Sp.tid;Studievært;Station
+# After split: Date;Time;MelodiTitel;Kunstner;Komponist;Forfatter;Indspil.år;Indspil.land;Nationalitet;Pladeselsk.;Katalog Nr;Sp.tid;Studievært;Station
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+  "DELETE",
+  "Year of First Release",
+  "Country of Recording",
+  "DELETE",
+  "Record Label",
+  "Catalogue No.",
+  "Track Playing Time",
+  "DELETE",
+  "DELETE",
 ]

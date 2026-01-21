@@ -5,49 +5,17 @@
 [default]
 # These stopwords apply to ALL stations
 words = [
-    "rasmus skött",
-    "julemix",
-    "dj pool",
     "Generic #",
-    "FutureRecords",
-    "dj deep",
-    "megamix",
-    "VBM_",
-    "megamwx",
-    "mega mix",
-    "yearmix",
-    "year mix",
     "live mix",
-    "mixtape",
-    "summermix",
-    "dancemix",
     "GoMorgen Liner",
-    "skøtt",
-    "hit mix",
     "vi elsker",
-    "pop mix",
-    "dance mix",
-    "mix cast",
-    "mastermix",
-    "retro mix",
-    "top 90s",
-    "summer mix",
-    "megasession",
-    "club mix",
-    "rolf warming",
-    "summerparty",
-    "in the mix",
-    "mashup",
-    "weekendmix",
-    "dj cosmo",
-    "dj simonsen",
-    "martin deejay",
-    "dj swa",
-    "dj daniel olsen",
-    "PHILIZZ",
-    "maassive",
-    "dj kosta",
-    "dj tedu",
+    # Common stopwords moved from station-specific sections
+    "promo",
+    "vejr",
+    "nyheder",
+    "jingle",
+    "sweeper",
+    "reklame",
 ]
 
 [bauer]
@@ -62,23 +30,17 @@ words = [
     "VO *:",
     "NO News",
     "NO BED",
-    "jingle",
-    "SWEEPER",
     ";SOFT ",
     "RADIO SOFT",
     "MR SW",
     ";MR",
     " BREAKER",
-    "NYHEDER",
     "PO Hitliste",
-    "PROMO",
-    "VEJR",
     "Bauer",
 ]
 
 [jyskfynske]
 words = [
-    "vejr",
     "vejle",
     ";classic ",
     ";dph ",
@@ -96,7 +58,6 @@ words = [
     "wb_",
     " sw ",
     "sw_",
-    "sweeper",
     "vlr",
     "toh ",
     "sw_unknown artist",
@@ -106,43 +67,28 @@ words = [
     "jfm",
     "festudvalget",
     "skala fm",
-    "promo",
-    "nyheder",
-    "reklame",
     "toh skala",
     "fest_",
     "vejrsyd",
-    "vejr [",
     "listen_count",
     "dst_",
     "fa_",
     "vib_",
     "rek-",
-    "vi elsker - ",
     "happy hour",
     "trackbed",
 ]
-
-[globus]
-words = []
 
 [radio4]
 words = [
     "lydidentitet",
     "podcast only",
     "ikke udgivet",
-    "jingle",
 ]
 
 [anr]
 words = [
     " ANR ",
     "[SS]",
-    "REKLAME",
-    " PROMO ",
-    "VEJR [",
     "LILLE FREDAG",
 ]
-
-[abc]
-words = []

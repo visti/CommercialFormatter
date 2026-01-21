@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import sys
-import os
 import csv
 import chardet
+
+from utils import get_file_path_from_args, validate_csv_file
+
 
 def detect_encoding(file_path):
     """Detect the encoding of the file using chardet."""
@@ -76,24 +78,17 @@ def remove_delete_columns_and_empty_rows(file_path):
 def main():
     print("Deleting extraneous columns and dropping empty rows.")
     sys.stdout.flush()
-    
-    if len(sys.argv) < 2:
+
+    file_path = get_file_path_from_args()
+    if not file_path:
         print("Usage: python remove_delete_columns.py <filename>")
         sys.exit(1)
-    
-    file_path = " ".join(sys.argv[1:]).strip()
-    
-    if os.path.isfile(file_path):
-        base, ext = os.path.splitext(file_path)
-        if ext.lower() == ".csv":
-            try:
-                remove_delete_columns_and_empty_rows(file_path)
-            except Exception as e:
-                print(f"Error processing '{file_path}': {e}")
-        else:
-            print(f"Skipping non-CSV file: '{file_path}'")
-    else:
-        print(f"File not found: '{file_path}'")
+
+    if validate_csv_file(file_path):
+        try:
+            remove_delete_columns_and_empty_rows(file_path)
+        except Exception as e:
+            print(f"Error processing '{file_path}': {e}")
     
     sys.stdout.flush()
     sys.exit(0)

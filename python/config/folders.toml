@@ -1,0 +1,51 @@
+# Folder to Station Mapping
+# Maps folder names under the base path to station aliases
+# The script will check if the current path contains any of these folder names
+
+# Base path for all station folders
+base_path = 'C:\Users\eva\Gramex\Kommercielle Landsdækkende - Documents'
+
+# Folder name -> station alias (case-insensitive matching)
+[folders]
+# Bauer stations
+"100FM" = "100fm"
+"100 Soft" = "bauer"
+"myRock" = "myrock"
+"POP" = "pop"
+"Voice" = "voice"
+
+# Jyskfynske stations
+"Classic FM" = "classicfm"
+"Skala" = "skala"
+"Viborg" = "viborg"
+"VLR" = "vlr"
+
+# ABC stations
+"ABC" = "abc"
+"Alfa" = "abc"
+"GoFM" = "gofm"
+"Radio M" = "radiom"
+"Silkeborg" = "silkeborg"
+"Solo" = "solo"
+
+# Globus stations
+"Globus" = "globus"
+"Globus Guld" = "globus"
+"Victoria" = "globus"
+"Viva" = "globus"
+
+# Other stations
+"ANR" = "anr"
+"Radio4" = "radio4"
+"Skive" = "skive"
+
+# Unmapped folders (no station config yet):
+# - _Performex
+# - 24syv
+# - Classic Rock - Digital only
+# - DK4
+# - Ekstra Bladet - DAB
+# - Nordjyske - Lukket
+# - Nova
+# - Radio Klassisk - DAB
+# - Radio Loud

@@ -20,6 +20,7 @@ class Station:
     positional: bool = False
     positions: list[int] = field(default_factory=list)
     has_headlines: bool = False
+    skip_lines: int = 0  # Number of header lines to skip (0 = auto from has_headlines)
     convert: bool = False
     separator: str = ";"
     headlines: list[str] = field(default_factory=list)
@@ -42,6 +43,12 @@ class Station:
         if self._stopword_pattern is None:
             return False
         return self._stopword_pattern.search(line.lower()) is not None
+
+    def matches_stopword_lower(self, line_lower: str) -> bool:
+        """Check if pre-lowercased line matches any stopword using compiled regex."""
+        if self._stopword_pattern is None:
+            return False
+        return self._stopword_pattern.search(line_lower) is not None
 
 
 def _load_stopwords() -> dict[str, list[str]]:
@@ -92,12 +99,18 @@ def _build_stations() -> tuple[dict[str, Station], dict[str, str]]:
             station_stopwords = station_stopwords.get("words", [])
         all_stopwords = default_stopwords + station_stopwords
 
+        has_headlines = cfg.get("has_headlines", False)
+        # Default skip_lines: 1 if has_headlines, else 0
+        default_skip = 1 if has_headlines else 0
+        skip_lines = cfg.get("skip_lines", default_skip)
+
         station = Station(
             name=cfg.get("name", key),
             ext=cfg.get("extensions", []),
             positional=cfg.get("positional", False),
             positions=cfg.get("positions", []),
-            has_headlines=cfg.get("has_headlines", False),
+            has_headlines=has_headlines,
+            skip_lines=skip_lines,
             convert=cfg.get("convert", False),
             separator=cfg.get("separator", ";"),
             headlines=cfg.get("headlines", []),
@@ -149,9 +162,3 @@ def list_aliases() -> dict[str, list[str]]:
     for alias, station in ALIASES.items():
         result[station].append(alias)
     return result
-
-
-def reload_config():
-    """Reload configuration from disk. Useful after editing config files."""
-    global STATIONS, ALIASES
-    STATIONS, ALIASES = _build_stations()

@@ -2,11 +2,31 @@
 
 import subprocess
 import sys
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+import chardet
+import output as console
 from config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
 from stations import Station
+
+
+def detect_encoding(file_path: Path) -> str:
+    """Detect file encoding using chardet."""
+    with open(file_path, "rb") as f:
+        raw_data = f.read()
+    result = chardet.detect(raw_data)
+    encoding = result.get("encoding", "utf-8")
+    # Handle common encoding aliases
+    if encoding and encoding.lower() in ("ascii", "iso-8859-1", "latin-1", "latin1"):
+        # These are often misdetected; try cp1252 which is a superset
+        encoding = "cp1252"
+    return encoding or "utf-8"
+
+if TYPE_CHECKING:
+    from output import ProcessingStats
 
 
 def get_files(station: Station, exclude_filename: str = "") -> list[Path]:
@@ -14,39 +34,51 @@ def get_files(station: Station, exclude_filename: str = "") -> list[Path]:
     cwd = Path.cwd()
     files = []
 
-    for ext in station.ext:
-        for f in cwd.iterdir():
-            if f.is_file() and f.name != exclude_filename:
-                if ext.lower() in f.name.lower():
-                    files.append(f)
+    # Pre-lowercase extensions for efficient comparison
+    extensions_lower = [ext.lower() for ext in station.ext]
+
+    for f in cwd.iterdir():
+        if f.is_file() and f.name != exclude_filename:
+            name_lower = f.name.lower()
+            if any(ext in name_lower for ext in extensions_lower):
+                files.append(f)
 
     if not files:
-        print("No eligible files found.")
+        console.error("No eligible files found.")
         sys.exit(1)
 
-    print("---------------------")
-    print(f"Found Files: {';'.join(f.name for f in files)}")
-    print("---------------------\n")
+    console.info(f"Found {console.bold(str(len(files)))} file(s):")
+    for f in files:
+        console.info(f"  {console.dim('-')} {f.name}")
+    print()
 
     return files
 
 
-def read_files(files: list[Path], station: Station) -> str:
+def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = None) -> str:
     """Read and concatenate all input files, applying station-specific transformations."""
     joined_content = []
+    total_files = len(files)
 
-    for file_path in files:
+    for idx, file_path in enumerate(files, 1):
+        console.progress(idx, total_files, f"Reading {file_path.name}")
+        if stats:
+            stats.files_processed = idx
+
         try:
-            content = file_path.read_text(encoding="utf-8-sig", errors="replace")
+            # Detect encoding for each file
+            encoding = detect_encoding(file_path)
+            console.info(console.dim(f"    Encoding: {encoding}"))
+            content = file_path.read_text(encoding=encoding, errors="replace")
         except Exception as e:
-            print(f"Could not read file {file_path}: {e}")
+            console.error(f"Could not read file {file_path}: {e}")
             continue
 
         lines = content.splitlines()
 
-        # Skip header line if station has headlines
-        if station.has_headlines and lines:
-            lines = lines[1:]
+        # Skip header lines based on station config
+        if station.skip_lines > 0 and lines:
+            lines = lines[station.skip_lines:]
 
         # Globus-specific: prepend filename and replace " - " with ";"
         if station.name == "Globus":
@@ -56,6 +88,27 @@ def read_files(files: list[Path], station: Station) -> str:
                 if line.strip():
                     line = line.replace(" - ", ";")
                     line = f"{base_filename}{line}"
+                    processed_lines.append(line)
+            lines = processed_lines
+
+        # Skive-specific: split "DD-MM-YYYY HH-HH" into "DD-MM-YYYY;HH:00:00"
+        if station.name == "Skive":
+            processed_lines = []
+            for line in lines:
+                if line.strip():
+                    # Split first field (Tidspunkt) which contains "01-12-2025 00-01"
+                    parts = line.split(";", 1)
+                    if len(parts) >= 1 and " " in parts[0]:
+                        date_time = parts[0].split(" ", 1)
+                        if len(date_time) == 2:
+                            date_part = date_time[0]
+                            # Time is "00-01" format (hour range), take first hour
+                            time_range = date_time[1]
+                            hour = time_range.split("-")[0] if "-" in time_range else time_range
+                            time_part = f"{hour}:00:00"
+                            # Reconstruct: date;time;rest_of_fields
+                            rest = parts[1] if len(parts) > 1 else ""
+                            line = f"{date_part};{time_part};{rest}"
                     processed_lines.append(line)
             lines = processed_lines
 
@@ -87,14 +140,31 @@ def format_time_field(time_str: str) -> str:
 
 
 def format_date_field(date_str: str) -> str:
-    """Format a 6-digit date string (YYMMDD) to DD-MM-YYYY."""
+    """Normalize date to DD-MM-YYYY format.
+
+    Handles:
+    - YYMMDD (6 digits) -> DD-MM-YYYY
+    - YYYY-MM-DD -> DD-MM-YYYY
+    - DD-MM-YYYY -> unchanged
+    """
     date_str = date_str.strip()
+
+    # Handle 6-digit format: YYMMDD
     if len(date_str) == 6 and date_str.isdigit():
         yy = date_str[0:2]
         mm = date_str[2:4]
         dd = date_str[4:6]
         year = f"20{yy}" if int(yy) < 50 else f"19{yy}"
         return f"{dd}-{mm}-{year}"
+
+    # Handle YYYY-MM-DD format (convert to DD-MM-YYYY)
+    if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
+        parts = date_str.split("-")
+        if len(parts) == 3 and len(parts[0]) == 4:
+            yyyy, mm, dd = parts
+            return f"{dd}-{mm}-{yyyy}"
+
+    # Already DD-MM-YYYY or unknown format, return as-is
     return date_str
 
 
@@ -145,7 +215,7 @@ def clean_empty_file(file_path: Path):
         line_count = content.count("\n")
         if line_count <= 1:
             file_path.unlink()
-            print(f"Removed empty file: {file_path.name}")
+            console.info(console.dim(f"Removed empty file: {file_path.name}"))
 
 
 def run_delete_columns(output_path: Path):
@@ -156,9 +226,9 @@ def run_delete_columns(output_path: Path):
             check=True
         )
     except subprocess.CalledProcessError as e:
-        print(f"Warning: delete_columns.py failed: {e}")
+        console.warning(f"delete_columns.py failed: {e}")
     except FileNotFoundError:
-        print(f"Warning: Could not find {DELETE_COLS_SCRIPT}")
+        console.warning(f"Could not find {DELETE_COLS_SCRIPT}")
 
 
 def process_line(line: str, station: Station) -> str:
@@ -175,6 +245,7 @@ def process_files(
     output_file: Path,
     additional_filter: str = "",
     use_stopwords: bool = True,
+    stats: "ProcessingStats" = None,
 ):
     """Main processing pipeline for station data."""
     # Track counts
@@ -192,51 +263,54 @@ def process_files(
     # Ensure rejection directory exists
     reject_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Open all output files
-    with (
-        open(output_file, "w", encoding="utf-8") as out_f,
-        open(reject_path, "w", encoding="utf-8") as reject_f,
-    ):
+    console.info("Processing lines...")
+
+    # Open all output files using ExitStack for proper context management
+    with ExitStack() as stack:
+        out_f = stack.enter_context(open(output_file, "w", encoding="utf-8"))
+        reject_f = stack.enter_context(open(reject_path, "w", encoding="utf-8"))
+
         additional_f = None
         if has_additional:
-            additional_f = open(additional_path, "w", encoding="utf-8")
-            print(f"Additional file opened for write: {additional_path}")
+            additional_f = stack.enter_context(open(additional_path, "w", encoding="utf-8"))
+            console.info(f"Additional filter: {console.cyan(additional_filter)}")
+            if stats:
+                stats.additional_file = additional_path.name
             write_headlines(additional_f, station)
 
-        try:
-            # Write headlines
-            write_headlines(out_f, station)
-            write_headlines(reject_f, station)
+        # Write headlines
+        write_headlines(out_f, station)
+        write_headlines(reject_f, station)
 
-            # Process each line
-            for line in content.splitlines():
-                if not line.strip():
-                    continue
+        # Process each line
+        for line in content.splitlines():
+            if not line.strip():
+                continue
 
-                # Check stopwords using pre-compiled regex
-                if use_stopwords and station.matches_stopword(line):
-                    reject_line = process_line(line, station)
-                    reject_f.write(reject_line + "\n")
-                    rejected += 1
-                    continue
+            # Pre-compute lowercase once for efficiency
+            line_lower = line.lower()
 
-                # Process the line
-                output_line = process_line(line, station)
-                processed += 1
+            # Check stopwords using pre-compiled regex
+            if use_stopwords and station.matches_stopword_lower(line_lower):
+                reject_line = process_line(line, station)
+                reject_f.write(reject_line + "\n")
+                rejected += 1
+                continue
 
-                # Check for additional routing
-                if has_additional and additional_filter_lower in line.lower():
-                    additional_f.write(output_line + "\n")
-                else:
-                    out_f.write(output_line + "\n")
+            # Process the line
+            output_line = process_line(line, station)
+            processed += 1
 
-        finally:
-            if additional_f:
-                additional_f.close()
+            # Check for additional routing
+            if has_additional and additional_filter_lower in line_lower:
+                additional_f.write(output_line + "\n")
+            else:
+                out_f.write(output_line + "\n")
 
-    # Print summary
-    print(f"Processed Lines: {processed}")
-    print(f"Rejected Lines: {rejected}")
+    # Update stats
+    if stats:
+        stats.lines_processed = processed
+        stats.lines_rejected = rejected
 
     # Cleanup phase
     if has_additional:
