@@ -112,6 +112,51 @@ def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = N
                     processed_lines.append(line)
             lines = processed_lines
 
+        # ABC-specific: fix artist/title split error where title contains " - "
+        # e.g., "bi-dua - Krig Og Fred;Shu" -> "Krig Og Fred;Shu-bi-dua"
+        if station.name == "ABC":
+            # Find lines with the issue and group by unique title/artist combo
+            issues_by_key = {}  # key = (title, artist) -> list of line indices
+            for i, line in enumerate(lines):
+                if line.strip():
+                    fields = line.split(";")
+                    if len(fields) > 8 and " - " in fields[7]:
+                        key = (fields[7], fields[8])
+                        if key not in issues_by_key:
+                            issues_by_key[key] = []
+                        issues_by_key[key].append(i)
+
+            # Prompt for each unique issue
+            if issues_by_key:
+                console.warning(f"Found {len(issues_by_key)} unique artist/title split issue(s)")
+                print()
+
+            lines_to_fix = []  # list of indices to fix
+            for (title, artist), indices in issues_by_key.items():
+                title_parts = title.split(" - ", 1)
+                fixed_title = title_parts[1]
+                fixed_artist = f"{artist}-{title_parts[0]}"
+
+                count = len(indices)
+                console.info(f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)")
+                console.info(f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\"")
+
+                response = input("  Apply fix? [Y/n]: ").strip().lower()
+                if response not in ("n", "no"):
+                    lines_to_fix.extend(indices)
+                    console.success(f"  Will fix {count} occurrence(s)")
+                else:
+                    console.info("  Skipped")
+                print()
+
+            # Apply fixes
+            for i in lines_to_fix:
+                fields = lines[i].split(";")
+                title_parts = fields[7].split(" - ", 1)
+                fields[7] = title_parts[1]
+                fields[8] = f"{fields[8]}-{title_parts[0]}"
+                lines[i] = ";".join(fields)
+
         joined_content.extend(lines)
 
     return "\n".join(joined_content)
