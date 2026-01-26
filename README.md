@@ -24,11 +24,12 @@ This installs the `komm_fmt` command globally.
 ### Usage
 
 ```bash
-komm_fmt <station> [options]
+komm_fmt [station] [options]
 
 # Examples
 komm_fmt Bauer
-komm_fmt GoFM                        # Uses Jyskfynske via alias
+komm_fmt                             # Auto-detect station from folder path
+komm_fmt GoFM                        # Uses ABC via alias
 komm_fmt Radio4 --additional=Boulevard
 komm_fmt Bauer --no-stopwords
 komm_fmt --list-stations             # Show all stations and aliases
@@ -45,6 +46,132 @@ komm_fmt --list-stations             # Show all stations and aliases
 
 ---
 
+## Features
+
+### Auto-Detection from Folder Path
+
+When no station is specified, the tool automatically detects the station from the current working directory path using mappings in `config/folders.toml`.
+
+```bash
+# Working in: C:\Users\eva\Gramex\...\ABC\2025\q4\
+komm_fmt
+# Output: Auto-detected station: abc
+```
+
+### Suggested Output Filename
+
+The tool suggests an output filename based on folder structure:
+
+```
+# Working in: .../Silkeborg/2025/q4/
+Set output filename [2025_q4_silkeborg.csv]:
+```
+
+Press Enter to accept, or type a custom name.
+
+### File Access Handling
+
+If the output file is open in another application (e.g., Excel), the tool prompts you:
+
+```
+Cannot access '2025_q4_abc.csv' - file is in use.
+Close the file and press Enter to retry, or X to quit:
+```
+
+### Playing Time Overflow Fix
+
+Tracks starting before midnight sometimes have incorrect playing times due to a buffer overflow (adds 1440 minutes). The tool automatically corrects times where minutes >= 1400:
+
+```
+Original: 1436:41  →  Corrected: 03:19
+Original: 1438:03  →  Corrected: 01:57
+```
+
+### Long Playing Time Check
+
+Tracks with playing times over 30 minutes trigger an interactive prompt:
+
+```
+Found 2 unique track(s) with playing time over 30 minutes
+
+  Title:  "Extended Club Mix"
+  Artist: "DJ Artist"
+  Time:   45:30 (3x)
+  [A]ccept / [R]eject / [E]dit:
+```
+
+Options:
+- **A** (or Enter): Accept the track as-is
+- **R**: Reject - move to rejection file
+- **E**: Edit - enter a corrected time (MM:SS format)
+
+Example of editing:
+```
+  [A]ccept / [R]eject / [E]dit: e
+  Enter corrected time (MM:SS): 04:30
+  Updated 3 occurrence(s) to 04:30
+```
+
+### ABC Station Enhancements
+
+#### PowerHit Suffix Removal
+
+Automatically removes " - ABC PowerHit" (case-insensitive) from track titles:
+
+```
+Before: "Stay (if you wanna dance) - ABC PowerHit"
+After:  "Stay (if you wanna dance)"
+
+Before: "Ferrari - ABC Powerhit"
+After:  "Ferrari"
+```
+
+#### Artist/Title Split Fix
+
+Detects and offers to fix incorrectly split artist/title fields containing " - ":
+
+```
+Found 3 unique artist/title split issue(s)
+
+  Current: Title="bi-dua - Krig Og Fred" Artist="Shu" (5x)
+  Fixed:   Title="Krig Og Fred" Artist="Shu-bi-dua"
+  [Y]es fix / [N]o skip / [X] reject:
+```
+
+Options:
+- **Y** (or Enter): Apply the fix
+- **N**: Skip - keep original
+- **X**: Reject - move to rejection file
+
+#### ABC-Specific Stopwords
+
+Lines containing these patterns are automatically rejected:
+- "Radio ABC"
+- "ABC live"
+
+These are checked before the artist/title split prompt, so rejected lines won't appear in the prompt.
+
+### Date Format Normalization
+
+Automatically normalizes various date formats to DD-MM-YYYY:
+
+| Input Format | Example | Output |
+|--------------|---------|--------|
+| YYMMDD | 251001 | 01-10-2025 |
+| YYYY-MM-DD | 2025-10-01 | 01-10-2025 |
+| DD.MM.YYYY | 01.10.2025 | 01-10-2025 |
+
+### Time Format Normalization
+
+Converts 6-digit time strings to HH:MM:SS:
+
+```
+Input:  235917
+Output: 23:59:17
+```
+
+---
+
 ## File Structure
 
 ```
@@ -53,11 +180,13 @@ commercial_formatter/
 │   ├── main.py                 # CLI entry point
 │   ├── processor.py            # Core processing logic
 │   ├── stations.py             # Station loading from TOML
+│   ├── output.py               # Console output and formatting
 │   ├── config.py               # Global paths and constants
 │   ├── pyproject.toml          # Package configuration
 │   ├── config/
 │   │   ├── stations.toml       # Station definitions
-│   │   └── stopwords.toml      # Rejection wordlists
+│   │   ├── stopwords.toml      # Rejection wordlists
+│   │   └── folders.toml        # Folder-to-station mappings
 │   └── lib/
 │       ├── convert.py          # XLSX to CSV converter
 │       ├── delete_columns.py   # Remove DELETE columns from output
@@ -76,124 +205,218 @@ commercial_formatter/
 
 ---
 
-## Python File Details
+## Configuration
 
-### `python/main.py`
-**CLI entry point.** Handles argument parsing, station selection, and orchestrates the processing pipeline.
+### Station Definitions (`config/stations.toml`)
 
-- Parses command-line arguments using `argparse`
-- Validates station name or alias
-- Prompts for output filename
-- Calls processor functions in sequence
-- Provides `--list-stations` to show available stations/aliases
+Each station section defines parsing rules:
 
-### `python/processor.py`
-**Core processing logic.** Reads input files, applies filtering, and writes output.
+```toml
+[abc]
+name = "ABC"
+aliases = ["solo", "gofm", "radiom", "silkeborg"]
+extensions = ["txt", "csv"]
+positional = false
+has_headlines = false
+convert = false
+separator = ";"
+positions = []
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "DELETE",              # Columns marked DELETE are removed
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+]
+```
 
-- `get_files()`: Finds files matching station's extensions in current directory
-- `read_files()`: Reads and concatenates files, handles BOM, applies Globus-specific transforms
-- `process_line()`: Formats a single line (positional extraction or CSV parsing)
-- `process_files()`: Main pipeline - stopword filtering, line processing, routing to output files
-- `format_date_field()`: Converts YYMMDD to DD-MM-YYYY
-- `format_time_field()`: Converts HHMMSS to HH:MM:SS
-- `run_delete_columns()`: Calls helper script to remove DELETE columns
+| Field | Description |
+|-------|-------------|
+| `name` | Display name |
+| `aliases` | Alternative names that resolve to this station |
+| `extensions` | File extensions to process |
+| `positional` | `true` for fixed-width, `false` for delimited |
+| `positions` | Column boundaries for positional extraction |
+| `has_headlines` | `true` if input files have a header row |
+| `skip_lines` | Number of header lines to skip (default: 1 if has_headlines) |
+| `convert` | `true` to run XLSX converter first |
+| `separator` | Output field separator (`;` or `:`) |
+| `headlines` | Column headers (`"DELETE"` marks columns for removal) |
 
-### `python/stations.py`
-**Station configuration loader.** Reads TOML files and builds Station objects.
+### Stopwords (`config/stopwords.toml`)
 
-- `Station` dataclass: Holds station config (name, extensions, positions, headlines, etc.)
-- `_load_stopwords()`: Loads stopwords from `config/stopwords.toml`
-- `_load_stations_config()`: Loads stations from `config/stations.toml`
-- `_compile_stopword_pattern()`: Compiles all stopwords into single regex for fast matching
-- `_build_stations()`: Creates Station objects with pre-compiled stopword matchers
-- `get_station()`: Looks up station by name or alias (direct names take precedence)
-- `list_stations()`: Returns list of station names
-- `list_aliases()`: Returns dict mapping stations to their aliases
-- `reload_config()`: Reloads config from disk without restarting
+Lines containing any stopword are rejected:
 
-### `python/config.py`
-**Global configuration constants.**
+```toml
+[default]
+# Applied to ALL stations
+words = [
+    "promo",
+    "jingle",
+    "sweeper",
+    "nyheder",
+    "vejr",
+    "reklame",
+]
 
-- `BASE_DIR`: Python package directory
-- `LIB_DIR`: Path to helper scripts
-- `CONFIG_DIR`: Path to TOML config files
-- `CONVERT_SCRIPT`: Path to XLSX converter
-- `DELETE_COLS_SCRIPT`: Path to column deletion script
-- `REJECTDIR`: Directory for rejected lines files
-- `ADDITIONAL_POSTFIX`: Default suffix for additional output files
+[bauer]
+# Additional stopwords for Bauer stations
+words = [
+    "PODCAST",
+    "TOP HOUR",
+    "NO News",
+]
 
-### `python/config/stations.toml`
-**Station definitions.** Edit this file to add/modify stations without changing code.
+[abc]
+# ABC-specific stopwords
+words = [
+    "Radio ABC",
+    "ABC live",
+]
+```
 
-Each station section defines:
-- `name`: Display name
-- `aliases`: Alternative names that resolve to this station
-- `extensions`: File extensions to process (e.g., `["txt", "den"]`)
-- `positional`: `true` for fixed-width files, `false` for delimited
-- `positions`: Column boundaries for positional extraction
-- `has_headlines`: `true` if input files have a header row to skip
-- `convert`: `true` to run XLSX converter before processing
-- `separator`: Output field separator (`;` or `:`)
-- `headlines`: Column headers for output file (use `"DELETE"` to mark columns for removal)
+### Folder Mappings (`config/folders.toml`)
 
-### `python/config/stopwords.toml`
-**Rejection wordlists.** Lines containing any stopword are rejected.
+Maps folder names to station aliases for auto-detection:
 
-- `[default]`: Stopwords applied to ALL stations (DJ mixes, megamixes, etc.)
-- `[stationname]`: Additional stopwords for specific stations
+```toml
+[folders]
+# Bauer stations
+"100FM" = "100fm"
+"myRock" = "myrock"
+"Nova" = "nova"
+"Voice" = "voice"
 
-Edit this file to add/remove stopwords without changing code.
+# ABC stations
+"ABC" = "abc"
+"Silkeborg" = "silkeborg"
+"Solo" = "solo"
 
-### `python/lib/convert.py`
-**XLSX to CSV converter.** Converts Excel files to CSV format before processing.
-
-- Finds `.xlsx` files matching pattern
-- Converts to CSV with semicolon delimiter
-- Archives original files
-
-### `python/lib/delete_columns.py`
-**Column removal utility.** Post-processes output files to remove unwanted columns.
-
-- Reads the output CSV
-- Removes columns with header `"DELETE"`
-- Removes empty rows
-- Detects file encoding automatically
-
-### `python/lib/delete_podcast.py`
-**Podcast removal utility.** Filters out podcast-related entries.
-
----
-
-## Odin File Details
-
-### `odin/main.odin`
-Entry point. Parses CLI arguments, handles memory tracking in debug mode, orchestrates processing.
-
-### `odin/stations.odin`
-Station definitions and stopword lists. Hardcoded station configurations.
-
-### `odin/process_files.odin`
-Core processing logic. Stopword checking, positional extraction, CSV parsing, file output.
-
-### `odin/io.odin`
-File I/O operations. Reading files, writing headlines, generating rejection filenames.
-
-### `odin/globals.odin`
-Global constants. Paths, separators, error messages.
-
-### `odin/helpers.odin`
-Utility functions. Debug printing, file deletion.
-
-### `odin/build.sh`
-Build script. Compiles Odin source to executable.
+# Other stations
+"Radio4" = "radio4"
+"Globus" = "globus"
+```
 
 ---
 
-## Configuration Examples
+## Processing Pipeline
 
-### Adding a New Station
+1. **File Discovery**: Find files matching station's extensions
+2. **Encoding Detection**: Auto-detect file encoding (UTF-8, CP1252, etc.)
+3. **Header Skipping**: Skip configured number of header lines
+4. **Station Transforms**: Apply station-specific preprocessing
+   - Globus: Prepend filename, replace " - " with ";"
+   - Skive: Split date/time field
+   - ABC: Remove PowerHit suffix, fix artist/title splits
+5. **Long Playing Time Check**: Prompt for tracks > 30 minutes
+6. **Stopword Filtering**: Reject lines matching stopwords
+7. **Line Processing**: Format dates, times, extract fields
+8. **Playing Time Fix**: Correct midnight overflow times
+9. **Output Routing**: Write to main, additional, or reject file
+10. **Column Cleanup**: Remove DELETE columns, empty rows
 
-Edit `python/config/stations.toml`:
+---
+
+## Output Files
+
+| File | Description |
+|------|-------------|
+| `<output>.csv` | Main output with processed tracks |
+| `<output>_additional.csv` | Lines matching `--additional` filter |
+| `<date>-reject-<station>.csv` | Rejected lines (stopwords, user rejections) |
+
+---
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Process Bauer station files
+komm_fmt bauer
+
+# Auto-detect station from current folder
+komm_fmt
+
+# Process with additional filter for specific artist
+komm_fmt abc --additional="Spotify"
+```
+
+### Interactive Session Example
+
+```
+$ komm_fmt abc
+
+Station: ABC
+Found 2 file(s):
+  - Radio ABC okt nov dec 2025.txt
+
+Set output filename [2025_q4_abc.csv]:
+
+Found 1 unique artist/title split issue(s)
+
+  Current: Title="bi-dua - Krig Og Fred" Artist="Shu" (5x)
+  Fixed:   Title="Krig Og Fred" Artist="Shu-bi-dua"
+  [Y]es fix / [N]o skip / [X] reject: y
+  Will fix 5 occurrence(s)
+
+Found 2 unique track(s) with playing time over 30 minutes
+
+  Title:  "Extended Remix"
+  Artist: "Various"
+  Time:   65:30 (1x)
+  [A]ccept / [R]eject / [E]dit: e
+  Enter corrected time (MM:SS): 06:30
+  Updated 1 occurrence(s) to 06:30
+
+  Title:  "Live Recording"
+  Artist: "Band"
+  Time:   45:00 (2x)
+  [A]ccept / [R]eject / [E]dit: r
+  Will reject 2 occurrence(s)
+
+Processing lines...
+
+┌─────────────────────────────────────┐
+│            Summary                  │
+├─────────────────────────────────────┤
+│  Files processed:    2              │
+│  Lines processed:    1,234          │
+│  Lines rejected:     56             │
+│  Output file:        2025_q4_abc.csv│
+└─────────────────────────────────────┘
+```
+
+### Handling Locked Files
+
+```
+$ komm_fmt abc
+
+Set output filename [2025_q4_abc.csv]:
+
+Cannot access '2025_q4_abc.csv' - file is in use.
+Close the file and press Enter to retry, or X to quit:
+
+[User closes Excel, presses Enter]
+
+Overwriting existing 2025_q4_abc.csv
+Processing lines...
+```
+
+---
+
+## Adding a New Station
+
+1. Edit `python/config/stations.toml`:
 
 ```toml
 [newstation]
@@ -206,47 +429,43 @@ has_headlines = false
 separator = ";"
 headlines = [
     "Date of Broadcasting",
-    "Track starting time",
+    "Track Starting Time",
+    "Track Playing Time",
     "Track Title",
     "Main Artist",
 ]
 ```
 
-### Adding Stopwords
-
-Edit `python/config/stopwords.toml`:
+2. Add stopwords in `python/config/stopwords.toml`:
 
 ```toml
-[default]
-words = [
-    # ... existing words ...
-    "new stopword",
-]
-
 [newstation]
 words = [
-    "station-specific stopword",
+    "station jingle",
+    "news break",
 ]
 ```
 
-### Adding Aliases
-
-Edit `python/config/stations.toml`:
+3. Add folder mapping in `python/config/folders.toml`:
 
 ```toml
-[existingstation]
-aliases = ["alias1", "alias2", "newalias"]
+[folders]
+"NewStation" = "ns"
 ```
 
 ---
 
-## Output Files
+## Supported Stations
 
-| File | Description |
-|------|-------------|
-| `<output>.csv` | Main output with processed tracks |
-| `<output>_additional.csv` | Lines matching `--additional` filter (if used) |
-| `<date>-reject-<station>.csv` | Rejected lines (stopword matches) |
+| Station | Aliases | Format |
+|---------|---------|--------|
+| Bauer | nova, radio100, 100fm, thevoice, voice, myrock, pop | Positional |
+| Jyskfynske | jfm, vlr, viborg, classicfm, skala | Positional |
+| Globus | - | Delimited |
+| Radio4 | r4, "radio 4" | CSV (XLSX convert) |
+| ANR | nordjyske, radionordjylland, nordjylland | Positional |
+| ABC | solo, gofm, radiom, silkeborg | Delimited |
+| Skive | "radio skive" | Delimited |
 
 ---
 
