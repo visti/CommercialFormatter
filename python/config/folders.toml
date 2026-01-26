@@ -13,13 +13,12 @@ base_path = 'C:\Users\eva\Gramex\Kommercielle Landsdækkende - Documents'
 "myRock" = "myrock"
 "POP" = "pop"
 "Voice" = "voice"
-
+"Nova" = "nova"
 # Jyskfynske stations
 "Classic FM" = "classicfm"
 "Skala" = "skala"
 "Viborg" = "viborg"
 "VLR" = "vlr"
-
 # ABC stations
 "ABC" = "abc"
 "Alfa" = "abc"
@@ -27,13 +26,11 @@ base_path = 'C:\Users\eva\Gramex\Kommercielle Landsdækkende - Documents'
 "Radio M" = "radiom"
 "Silkeborg" = "silkeborg"
 "Solo" = "solo"
-
 # Globus stations
 "Globus" = "globus"
 "Globus Guld" = "globus"
 "Victoria" = "globus"
 "Viva" = "globus"
-
 # Other stations
 "ANR" = "anr"
 "Radio4" = "radio4"

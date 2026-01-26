@@ -6,7 +6,7 @@
 
 [bauer]
 name = "Bauer"
-aliases = ["radio100", "100fm", "thevoice", "voice", "myrock", "pop"]
+aliases = ["nova", "radio100", "100fm", "thevoice", "voice", "myrock", "pop"]
 extensions = ["txt"]
 positional = true
 has_headlines = false

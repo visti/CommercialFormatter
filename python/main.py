@@ -9,7 +9,7 @@ from pathlib import Path
 
 import output as console
 from config import CONVERT_SCRIPT, NOTVALIDSTATION
-from processor import get_files, process_files, read_files
+from processor import get_files, make_additional_filename, process_files, read_files
 from stations import get_station, list_aliases, list_stations
 
 # Folder mapping config
@@ -82,6 +82,44 @@ def suggest_output_filename() -> str:
     if quarter.startswith("q") and year.isdigit() and station_folder:
         return f"{year}_{quarter}_{station_folder}.csv"
     return ""
+
+
+def check_file_accessible(file_path: Path) -> bool:
+    """Check if a file can be written to (not locked by another process).
+
+    Args:
+        file_path: Path to the file to check
+
+    Returns:
+        True if file is accessible or doesn't exist, False if locked
+    """
+    if not file_path.exists():
+        return True
+
+    try:
+        # Try to open the file in append mode to check if it's locked
+        with open(file_path, "a"):
+            pass
+        return True
+    except (PermissionError, OSError):
+        return False
+
+
+def ensure_file_accessible(file_path: Path) -> bool:
+    """Ensure a file is accessible, prompting user to close it if needed.
+
+    Args:
+        file_path: Path to the file to check
+
+    Returns:
+        True if file is accessible, False if user chose to quit
+    """
+    while not check_file_accessible(file_path):
+        console.error(f"Cannot access '{file_path.name}' - file is in use.")
+        response = input("Close the file and press Enter to retry, or X to quit: ").strip().lower()
+        if response == "x":
+            return False
+    return True
 
 
 def print_stations_and_aliases():
@@ -191,6 +229,18 @@ Examples:
 
     output_path = Path.cwd() / output_filename
 
+    # Check if output file is accessible (not locked by another process)
+    if not ensure_file_accessible(output_path):
+        console.info("Exiting.")
+        sys.exit(0)
+
+    # Also check additional output file if --additional is specified
+    if args.additional:
+        additional_path = make_additional_filename(output_path)
+        if not ensure_file_accessible(additional_path):
+            console.info("Exiting.")
+            sys.exit(0)
+
     # Delete existing output file if it exists
     if output_path.exists():
         output_path.unlink()
@@ -206,7 +256,7 @@ Examples:
     files = get_files(station, exclude_filename=output_filename)
     stats.files_total = len(files)
 
-    content = read_files(files, station, stats)
+    content, reject_indices = read_files(files, station, stats)
 
     process_files(
         content=content,
@@ -215,6 +265,7 @@ Examples:
         additional_filter=args.additional,
         use_stopwords=not args.no_stopwords,
         stats=stats,
+        force_reject_indices=reject_indices,
     )
 
     # Print summary

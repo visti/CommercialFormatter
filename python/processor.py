@@ -1,5 +1,6 @@
 """Core file processing logic for commercial formatter."""
 
+import re
 import subprocess
 import sys
 from contextlib import ExitStack
@@ -59,6 +60,7 @@ def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = N
     """Read and concatenate all input files, applying station-specific transformations."""
     joined_content = []
     total_files = len(files)
+    all_dash_reject_indices = set()  # Track rejected lines from dash delimiter check
 
     for idx, file_path in enumerate(files, 1):
         console.progress(idx, total_files, f"Reading {file_path.name}")
@@ -112,13 +114,27 @@ def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = N
                     processed_lines.append(line)
             lines = processed_lines
 
-        # ABC-specific: fix artist/title split error where title contains " - "
-        # e.g., "bi-dua - Krig Og Fred;Shu" -> "Krig Og Fred;Shu-bi-dua"
+        # ABC-specific transformations
         if station.name == "ABC":
+            # Remove " - ABC PowerHit" suffix from titles (field index 7, case-insensitive)
+            powerhit_pattern = re.compile(r" - ABC Powerhit", re.IGNORECASE)
+            for i, line in enumerate(lines):
+                if line.strip():
+                    fields = line.split(";")
+                    if len(fields) > 7 and powerhit_pattern.search(fields[7]):
+                        fields[7] = powerhit_pattern.sub("", fields[7])
+                        lines[i] = ";".join(fields)
+
+            # Fix artist/title split error where title contains " - "
+            # e.g., "bi-dua - Krig Og Fred;Shu" -> "Krig Og Fred;Shu-bi-dua"
             # Find lines with the issue and group by unique title/artist combo
+            # Skip lines that match stopwords (they'll be rejected later anyway)
             issues_by_key = {}  # key = (title, artist) -> list of line indices
             for i, line in enumerate(lines):
                 if line.strip():
+                    # Skip lines that will be rejected by stopwords
+                    if station.matches_stopword_lower(line.lower()):
+                        continue
                     fields = line.split(";")
                     if len(fields) > 8 and " - " in fields[7]:
                         key = (fields[7], fields[8])
@@ -132,6 +148,7 @@ def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = N
                 print()
 
             lines_to_fix = []  # list of indices to fix
+            dash_reject_indices = set()  # list of indices to reject
             for (title, artist), indices in issues_by_key.items():
                 title_parts = title.split(" - ", 1)
                 fixed_title = title_parts[1]
@@ -141,10 +158,13 @@ def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = N
                 console.info(f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)")
                 console.info(f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\"")
 
-                response = input("  Apply fix? [Y/n]: ").strip().lower()
-                if response not in ("n", "no"):
+                response = input("  [Y]es fix / [N]o skip / [X] reject: ").strip().lower()
+                if response in ("y", "yes", ""):
                     lines_to_fix.extend(indices)
                     console.success(f"  Will fix {count} occurrence(s)")
+                elif response in ("x", "reject"):
+                    dash_reject_indices.update(indices)
+                    console.info(f"  Will reject {count} occurrence(s)")
                 else:
                     console.info("  Skipped")
                 print()
@@ -157,9 +177,36 @@ def read_files(files: list[Path], station: Station, stats: "ProcessingStats" = N
                 fields[8] = f"{fields[8]}-{title_parts[0]}"
                 lines[i] = ";".join(fields)
 
+            # Add dash reject indices with offset for global position
+            offset = len(joined_content)
+            all_dash_reject_indices.update(i + offset for i in dash_reject_indices)
+
         joined_content.extend(lines)
 
-    return "\n".join(joined_content)
+    # Check for long playing times (>1 hour) in CSV-format stations
+    if not station.positional:
+        # Determine field indices based on station
+        # Default for ABC-like format: title at 7, artist at 8, time at 2
+        title_idx = 7
+        artist_idx = 8
+        time_idx = 2
+
+        # Adjust for other station formats if needed
+        if station.name == "Skive":
+            title_idx = 2  # After date;time split
+            artist_idx = 3
+            time_idx = 11  # Sp.tid field
+
+        joined_content, reject_indices = check_long_playing_times(
+            joined_content, station, title_idx, artist_idx, time_idx
+        )
+    else:
+        reject_indices = set()
+
+    # Merge dash delimiter rejections with other rejections
+    reject_indices.update(all_dash_reject_indices)
+
+    return "\n".join(joined_content), reject_indices
 
 
 def make_additional_filename(base_path: Path) -> Path:
@@ -182,6 +229,180 @@ def format_time_field(time_str: str) -> str:
     if len(time_str) == 6:
         return f"{time_str[0:2]}:{time_str[2:4]}:{time_str[4:6]}"
     return time_str
+
+
+def fix_overflow_playing_time(playing_time: str) -> str:
+    """Fix buffer overflow in playing time for tracks starting before midnight.
+
+    Some stations incorrectly calculate playing time by adding 1440 minutes
+    (minutes in a day) when tracks span midnight. This results in times like
+    1436:41 instead of the correct 03:19.
+
+    Only applies to times where minutes >= 1400.
+
+    Args:
+        playing_time: Time string in MM:SS or M:SS format
+
+    Returns:
+        Corrected time string in MM:SS format
+    """
+    if ":" not in playing_time:
+        return playing_time
+
+    parts = playing_time.split(":")
+    if len(parts) < 2:
+        return playing_time
+
+    try:
+        minutes = int(parts[0])
+        seconds = int(parts[1])
+    except ValueError:
+        return playing_time
+
+    # Only fix if minutes >= 1400 (threshold to avoid false positives)
+    if minutes < 1400:
+        return playing_time
+
+    # Convert to total seconds
+    total_seconds = minutes * 60 + seconds
+    # 1440 minutes = 86400 seconds (one day)
+    correct_seconds = 86400 - total_seconds
+
+    if correct_seconds < 0:
+        return playing_time  # Something went wrong, return original
+
+    # Convert back to MM:SS
+    correct_minutes = correct_seconds // 60
+    correct_secs = correct_seconds % 60
+
+    return f"{correct_minutes:02d}:{correct_secs:02d}"
+
+
+def get_playing_time_minutes(playing_time: str) -> int | None:
+    """Extract total minutes from a playing time string.
+
+    Args:
+        playing_time: Time string in MM:SS format
+
+    Returns:
+        Total minutes, or None if parsing fails
+    """
+    if ":" not in playing_time:
+        return None
+
+    parts = playing_time.split(":")
+    if len(parts) < 2:
+        return None
+
+    try:
+        return int(parts[0])
+    except ValueError:
+        return None
+
+
+def check_long_playing_times(
+    lines: list[str],
+    station: "Station",
+    title_idx: int = 7,
+    artist_idx: int = 8,
+    time_idx: int = 2,
+) -> tuple[list[str], set[int]]:
+    """Check for tracks with playing times over 30 minutes and prompt user.
+
+    For each unique track with long playing time, prompts user to:
+    - [A]ccept: Keep the track as-is
+    - [R]eject: Move to rejection file
+    - [E]dit: Enter a corrected playing time
+
+    Args:
+        lines: List of input lines
+        station: Station configuration
+        title_idx: Field index for track title
+        artist_idx: Field index for artist
+        time_idx: Field index for playing time
+
+    Returns:
+        Tuple of (modified lines, set of line indices to reject)
+    """
+    # Find lines with long playing times, grouped by unique track
+    # Key = (title, artist, playing_time) -> list of line indices
+    issues_by_key: dict[tuple[str, str, str], list[int]] = {}
+
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+
+        fields = line.split(";")
+        if len(fields) <= max(title_idx, artist_idx, time_idx):
+            continue
+
+        # Get playing time and apply overflow fix first
+        playing_time = fix_overflow_playing_time(fields[time_idx])
+        minutes = get_playing_time_minutes(playing_time)
+
+        if minutes is not None and minutes >= 30:
+            title = fields[title_idx] if len(fields) > title_idx else ""
+            artist = fields[artist_idx] if len(fields) > artist_idx else ""
+            key = (title, artist, playing_time)
+
+            if key not in issues_by_key:
+                issues_by_key[key] = []
+            issues_by_key[key].append(i)
+
+    if not issues_by_key:
+        return lines, set()
+
+    console.warning(f"Found {len(issues_by_key)} unique track(s) with playing time over 30 minutes")
+    print()
+
+    lines_to_reject: set[int] = set()
+    modified_lines = lines.copy()
+
+    for (title, artist, playing_time), indices in issues_by_key.items():
+        count = len(indices)
+        console.info(f"  Title:  \"{title}\"")
+        console.info(f"  Artist: \"{artist}\"")
+        console.info(f"  Time:   {playing_time} ({count}x)")
+
+        while True:
+            response = input("  [A]ccept / [R]eject / [E]dit: ").strip().lower()
+
+            if response in ("a", "accept", ""):
+                console.success(f"  Accepted {count} occurrence(s)")
+                break
+
+            elif response in ("r", "reject"):
+                lines_to_reject.update(indices)
+                console.info(f"  Will reject {count} occurrence(s)")
+                break
+
+            elif response in ("e", "edit"):
+                new_time = input("  Enter corrected time (MM:SS): ").strip()
+                if ":" in new_time:
+                    # Validate format
+                    parts = new_time.split(":")
+                    try:
+                        int(parts[0])
+                        int(parts[1])
+                        # Update all matching lines
+                        for idx in indices:
+                            fields = modified_lines[idx].split(";")
+                            if len(fields) > time_idx:
+                                fields[time_idx] = new_time
+                                modified_lines[idx] = ";".join(fields)
+                        console.success(f"  Updated {count} occurrence(s) to {new_time}")
+                        break
+                    except ValueError:
+                        console.error("  Invalid time format. Use MM:SS (e.g., 03:45)")
+                else:
+                    console.error("  Invalid time format. Use MM:SS (e.g., 03:45)")
+
+            else:
+                console.error("  Invalid choice. Enter A, R, or E")
+
+        print()
+
+    return modified_lines, lines_to_reject
 
 
 def format_date_field(date_str: str) -> str:
@@ -249,6 +470,10 @@ def process_csv_line(line: str, separator: str = ";") -> str:
     if len(fields) > 1 and len(fields[1]) == 6:
         fields[1] = format_time_field(fields[1])
 
+    # Fix overflow playing time (index 2) - handles midnight buffer overflow
+    if len(fields) > 2:
+        fields[2] = fix_overflow_playing_time(fields[2])
+
     return separator.join(fields)
 
 
@@ -296,6 +521,7 @@ def process_files(
     additional_filter: str = "",
     use_stopwords: bool = True,
     stats: "ProcessingStats" = None,
+    force_reject_indices: set[int] | None = None,
 ):
     """Main processing pipeline for station data."""
     # Track counts
@@ -333,8 +559,18 @@ def process_files(
         write_headlines(reject_f, station)
 
         # Process each line
+        line_index = 0
         for line in content.splitlines():
             if not line.strip():
+                line_index += 1
+                continue
+
+            # Check if line was marked for forced rejection (long playing time)
+            if force_reject_indices and line_index in force_reject_indices:
+                reject_line = process_line(line, station)
+                reject_f.write(reject_line + "\n")
+                rejected += 1
+                line_index += 1
                 continue
 
             # Pre-compute lowercase once for efficiency
@@ -345,6 +581,7 @@ def process_files(
                 reject_line = process_line(line, station)
                 reject_f.write(reject_line + "\n")
                 rejected += 1
+                line_index += 1
                 continue
 
             # Process the line
@@ -356,6 +593,8 @@ def process_files(
                 additional_f.write(output_line + "\n")
             else:
                 out_f.write(output_line + "\n")
+
+            line_index += 1
 
     # Update stats
     if stats:

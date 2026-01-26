@@ -92,3 +92,9 @@ words = [
     "[SS]",
     "LILLE FREDAG",
 ]
+
+[abc]
+words = [
+    "Radio ABC",
+    "ABC live",
+]
