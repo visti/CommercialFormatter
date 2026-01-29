@@ -180,12 +180,27 @@ Examples:
         action="store_true",
         help="List all available stations and their aliases",
     )
+    parser.add_argument(
+        "--edit-choices",
+        action="store_true",
+        help="Open remembered choices file in nvim for editing",
+    )
 
     args = parser.parse_args()
 
     # Handle --list-stations
     if args.list_stations:
         print_stations_and_aliases()
+        sys.exit(0)
+
+    # Handle --edit-choices
+    if args.edit_choices:
+        choices_file = Path(__file__).parent / "config" / "remembered_choices.toml"
+        if not choices_file.exists():
+            console.info(f"Creating {choices_file.name}...")
+            choices_file.parent.mkdir(parents=True, exist_ok=True)
+            choices_file.write_text("# Remembered user choices\n\n[artist_title_fixes]\n\n[long_playing_times]\n")
+        subprocess.run(["nvim", str(choices_file)])
         sys.exit(0)
 
     # Determine station: use argument, or auto-detect from path
