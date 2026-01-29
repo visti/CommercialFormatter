@@ -178,3 +178,47 @@ headlines = [
   "DELETE",
   "DELETE",
 ]
+
+[skaga]
+name = "Skaga"
+aliases = ["radio hirtshals", "hirtshals"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+skip_lines = 2  # Skip "Print log:..." line AND column headers
+convert = false
+separator = ";"
+positions = []
+# Original: Time;MelodyTitle;Artist;Composer;Writer;Pl.time;Host;Station
+# After split: Date;Time;MelodyTitle;Artist;Composer;Writer;Pl.time;Host;Station
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+  "DELETE",
+  "Track Playing Time",
+  "DELETE",
+  "DELETE",
+]
+
+[limfjord]
+name = "Limfjord"
+aliases = ["limfjord mix", "limfjord slager", "radio limfjord"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+convert = false
+separator = ";"
+input_separator = ","
+positions = []
+# Air Date,Air Time,Played Duration,Music Title,First Artist,Station
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+]

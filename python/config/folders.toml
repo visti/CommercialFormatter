@@ -35,6 +35,12 @@ base_path = 'C:\Users\eva\Gramex\Kommercielle Landsdækkende - Documents'
 "ANR" = "anr"
 "Radio4" = "radio4"
 "Skive" = "skive"
+# Limfjord stations
+"Limfjord Mix" = "limfjord"
+"Limfjord Slager" = "limfjord"
+"Limfjord" = "limfjord"
+# Skaga stations
+"Skaga" = "skaga"
 
 # Unmapped folders (no station config yet):
 # - _Performex

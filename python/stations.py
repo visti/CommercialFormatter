@@ -22,10 +22,12 @@ class Station:
     has_headlines: bool = False
     skip_lines: int = 0  # Number of header lines to skip (0 = auto from has_headlines)
     convert: bool = False
-    separator: str = ";"
+    separator: str = ";"  # Output separator
+    input_separator: str = ";"  # Input separator (defaults to same as output)
     headlines: list[str] = field(default_factory=list)
     # Pre-compiled for efficiency
     _stopword_pattern: Optional[re.Pattern] = field(default=None, repr=False)
+    _stopwords: list[str] = field(default_factory=list, repr=False)
     _sorted_positions: list[int] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
@@ -49,6 +51,15 @@ class Station:
         if self._stopword_pattern is None:
             return False
         return self._stopword_pattern.search(line_lower) is not None
+
+    def get_matched_stopword(self, line_lower: str) -> Optional[str]:
+        """Return the stopword that matched the line, or None if no match."""
+        if self._stopword_pattern is None:
+            return None
+        match = self._stopword_pattern.search(line_lower)
+        if match:
+            return match.group(0)
+        return None
 
 
 def _load_stopwords() -> dict[str, list[str]]:
@@ -104,6 +115,9 @@ def _build_stations() -> tuple[dict[str, Station], dict[str, str]]:
         default_skip = 1 if has_headlines else 0
         skip_lines = cfg.get("skip_lines", default_skip)
 
+        output_sep = cfg.get("separator", ";")
+        input_sep = cfg.get("input_separator", output_sep)
+
         station = Station(
             name=cfg.get("name", key),
             ext=cfg.get("extensions", []),
@@ -112,11 +126,13 @@ def _build_stations() -> tuple[dict[str, Station], dict[str, str]]:
             has_headlines=has_headlines,
             skip_lines=skip_lines,
             convert=cfg.get("convert", False),
-            separator=cfg.get("separator", ";"),
+            separator=output_sep,
+            input_separator=input_sep,
             headlines=cfg.get("headlines", []),
         )
 
-        # Compile stopword pattern
+        # Store stopwords and compile pattern
+        station._stopwords = all_stopwords
         station._stopword_pattern = _compile_stopword_pattern(all_stopwords)
 
         stations[key.lower()] = station
