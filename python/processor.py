@@ -707,6 +707,7 @@ def process_files(
     use_stopwords: bool = True,
     stats: ProcessingStats | None = None,
     force_reject_indices: set[int] | None = None,
+    save_reject_file: bool = True,
 ) -> None:
     """Main processing pipeline for station data.
 
@@ -718,6 +719,7 @@ def process_files(
         use_stopwords: Whether to apply stopword filtering.
         stats: Optional stats object to update.
         force_reject_indices: Set of line indices to force reject.
+        save_reject_file: Whether to save rejected lines to a file.
     """
     # Track counts
     rejected = 0
@@ -727,13 +729,14 @@ def process_files(
     # Prepare file paths
     has_additional = bool(additional_filter)
     additional_path = make_additional_filename(output_file) if has_additional else None
-    reject_path = generate_rejection_filename(station)
+    reject_path = generate_rejection_filename(station) if save_reject_file else None
 
     # Pre-lowercase additional filter for fast comparison
     additional_filter_lower = additional_filter.lower() if has_additional else ""
 
     # Ensure rejection directory exists
-    reject_path.parent.mkdir(parents=True, exist_ok=True)
+    if reject_path:
+        reject_path.parent.mkdir(parents=True, exist_ok=True)
 
     console.info("Processing lines...")
 
@@ -750,7 +753,10 @@ def process_files(
         # Open all output files using ExitStack for proper context management
         with ExitStack() as stack:
             out_f = stack.enter_context(open(output_file, "w", encoding="utf-8"))
-            reject_f = stack.enter_context(open(reject_path, "w", encoding="utf-8"))
+
+            reject_f: IO[str] | None = None
+            if reject_path:
+                reject_f = stack.enter_context(open(reject_path, "w", encoding="utf-8"))
 
             additional_f: IO[str] | None = None
             if has_additional:
@@ -764,7 +770,8 @@ def process_files(
 
             # Write headlines
             write_headlines(out_f, station)
-            write_headlines(reject_f, station)
+            if reject_f:
+                write_headlines(reject_f, station)
 
             # Process each line
             line_index = 0
@@ -778,8 +785,9 @@ def process_files(
 
                 # Check if line was marked for forced rejection
                 if force_reject_indices and line_index in force_reject_indices:
-                    reject_line = process_line(line, station)
-                    reject_f.write(reject_line + "\n")
+                    if reject_f:
+                        reject_line = process_line(line, station)
+                        reject_f.write(reject_line + "\n")
                     rejected += 1
                     logging.log_rejection(line_index, "forced_reject", line)
                     line_index += 1
@@ -790,8 +798,9 @@ def process_files(
 
                 # Check stopwords using pre-compiled regex
                 if use_stopwords and station.matches_stopword_lower(line_lower):
-                    reject_line = process_line(line, station)
-                    reject_f.write(reject_line + "\n")
+                    if reject_f:
+                        reject_line = process_line(line, station)
+                        reject_f.write(reject_line + "\n")
                     rejected += 1
 
                     # Track which stopword matched for summary

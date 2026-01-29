@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 
 import output as console
-from config import CONVERT_SCRIPT, NOTVALIDSTATION
+from config import CONVERT_SCRIPT, NOTVALIDSTATION, REJECTDIR
 from processor import get_files, make_additional_filename, process_files, read_files
 from stations import get_station, list_aliases, list_stations
 
@@ -192,6 +192,16 @@ Examples:
         dest="files",
         help="Process specific file(s) instead of all matching files (can be used multiple times)",
     )
+    parser.add_argument(
+        "--reject-path",
+        action="store_true",
+        help="Open the rejection log folder in file explorer",
+    )
+    parser.add_argument(
+        "--no-reject-file",
+        action="store_true",
+        help="Skip saving rejected lines to the rejection log file",
+    )
 
     args = parser.parse_args()
 
@@ -208,6 +218,19 @@ Examples:
             choices_file.parent.mkdir(parents=True, exist_ok=True)
             choices_file.write_text("# Remembered user choices\n\n[artist_title_fixes]\n\n[long_playing_times]\n")
         subprocess.run(["nvim", str(choices_file)])
+        sys.exit(0)
+
+    # Handle --reject-path
+    if args.reject_path:
+        if REJECTDIR.exists():
+            if sys.platform == "win32":
+                subprocess.run(["explorer", str(REJECTDIR)])
+            elif sys.platform == "darwin":
+                subprocess.run(["open", str(REJECTDIR)])
+            else:
+                subprocess.run(["xdg-open", str(REJECTDIR)])
+        else:
+            console.error(f"Rejection folder does not exist: {REJECTDIR}")
         sys.exit(0)
 
     # Determine station: use argument, or auto-detect from path
@@ -304,6 +327,7 @@ Examples:
         use_stopwords=not args.no_stopwords,
         stats=stats,
         force_reject_indices=reject_indices,
+        save_reject_file=not args.no_reject_file,
     )
 
     # Print summary
