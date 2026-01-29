@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 import sys
 import csv
+import os
 import chardet
 
 from utils import get_file_path_from_args, validate_csv_file
+
+# Simple ANSI colors
+USE_COLORS = hasattr(sys.stdout, "isatty") and sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+DIM = "\033[2m" if USE_COLORS else ""
+CYAN = "\033[96m" if USE_COLORS else ""
+YELLOW = "\033[93m" if USE_COLORS else ""
+GREEN = "\033[92m" if USE_COLORS else ""
+RESET = "\033[0m" if USE_COLORS else ""
 
 
 def detect_encoding(file_path):
@@ -12,8 +21,6 @@ def detect_encoding(file_path):
         raw_data = f.read()
     result = chardet.detect(raw_data)
     encoding = result.get('encoding', 'utf-8')
-    print(f"Detected encoding: {encoding}")
-    sys.stdout.flush()
     return encoding
 
 def remove_delete_columns_and_empty_rows(file_path):
@@ -25,7 +32,7 @@ def remove_delete_columns_and_empty_rows(file_path):
         rows = list(reader)
 
     if not rows:
-        print(f"No data found in file: {file_path}")
+        print(f"{YELLOW}Warning:{RESET} No data found in {file_path.name}")
         sys.stdout.flush()
         return
 
@@ -80,13 +87,13 @@ def remove_delete_columns_and_empty_rows(file_path):
             parts.append(f"{deleted_empty} empty artist/title")
         if deleted_malformed > 0:
             parts.append(f"{deleted_malformed} malformed")
-        print(f"Removed {total_deleted} row(s): {', '.join(parts)}")
+        print(f"{YELLOW}Cleanup:{RESET} Removed {total_deleted} row(s) ({', '.join(parts)})")
 
-    print(f"Columns removed: {len(delete_columns)}. Output: {file_path}")
+    print(f"{GREEN}Done:{RESET} {len(delete_columns)} columns removed → {CYAN}{file_path.name}{RESET}")
     sys.stdout.flush()
 
 def main():
-    print("Deleting extraneous columns and dropping empty rows.")
+    print(f"{DIM}Cleaning up columns and empty rows...{RESET}")
     sys.stdout.flush()
 
     file_path = get_file_path_from_args()
