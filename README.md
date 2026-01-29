@@ -32,17 +32,24 @@ komm_fmt                             # Auto-detect station from folder path
 komm_fmt GoFM                        # Uses ABC via alias
 komm_fmt Radio4 --additional=Boulevard
 komm_fmt Bauer --no-stopwords
+komm_fmt abc -f "Radio ABC.txt"      # Process specific file only
 komm_fmt --list-stations             # Show all stations and aliases
+komm_fmt --edit-choices              # Edit remembered decisions in nvim
+komm_fmt --reject-path               # Open rejection log folder
 ```
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
+| `-f, --file FILE` | Process specific file(s) instead of all matching (can be repeated) |
 | `--additional=FILTER` | Route lines containing FILTER to a separate CSV |
 | `--additional-postfix=TEXT` | Suffix for additional file (default: `_additional`) |
 | `--no-stopwords` | Disable stopword filtering |
+| `--no-reject-file` | Skip saving rejected lines to the rejection log |
 | `--list-stations` | List all stations and their aliases |
+| `--edit-choices` | Open remembered choices file in nvim for editing |
+| `--reject-path` | Open the rejection log folder in file explorer |
 
 ---
 
@@ -178,6 +185,8 @@ commercial_formatter/
     ├── output.py               # Console output and formatting
     ├── config.py               # Global paths and constants
     ├── choices.py              # User choice persistence
+    ├── decisions.py            # Decision management (remember/prompt/apply)
+    ├── formatters.py           # Field formatting (date, time, duration)
     ├── settings.py             # Settings management
     ├── app_logging.py          # Logging utilities
     ├── pyproject.toml          # Package configuration
@@ -334,6 +343,100 @@ Maps folder names to station aliases for auto-detection:
 ---
 
 ## Processing Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              main.py                                         │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐   │
+│  │ parse_args  │───▶│ get_station │───▶│  get_files  │───▶│ read_files  │   │
+│  └─────────────┘    └─────────────┘    └─────────────┘    └──────┬──────┘   │
+│                                                                   │          │
+│                                                                   ▼          │
+│                                                          ┌─────────────┐     │
+│                                                          │process_files│     │
+│                                                          └──────┬──────┘     │
+│                                                                 │            │
+│                                                                 ▼            │
+│                                                      ┌──────────────────┐    │
+│                                                      │print_summary_box │    │
+│                                                      └──────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           read_files() Flow                                  │
+│                                                                              │
+│  ┌──────────────────┐                                                        │
+│  │ read_single_file │  (for each file)                                       │
+│  └────────┬─────────┘                                                        │
+│           │                                                                  │
+│           ▼                                                                  │
+│  ┌──────────────────┐    ┌───────────────────────────┐                       │
+│  │ detect_encoding  │───▶│ apply_transformations     │                       │
+│  └──────────────────┘    │ (split_datetime,          │                       │
+│                          │  prepend_filename, etc.)  │                       │
+│                          └─────────────┬─────────────┘                       │
+│                                        │                                     │
+│           ┌────────────────────────────┼────────────────────────────┐        │
+│           ▼                            ▼                            ▼        │
+│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────┐   │
+│  │check_artist_title   │    │check_long_playing   │    │ check_duplicates│   │
+│  │_split()             │    │_times()             │    │ ()              │   │
+│  └─────────┬───────────┘    └─────────┬───────────┘    └────────┬────────┘   │
+│            │                          │                         │            │
+│            └──────────────────────────┼─────────────────────────┘            │
+│                                       ▼                                      │
+│                            ┌─────────────────────┐                           │
+│                            │  DecisionManager    │                           │
+│                            │  (remember/prompt/  │                           │
+│                            │   apply pattern)    │                           │
+│                            └─────────────────────┘                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         process_files() Flow                                 │
+│                                                                              │
+│  ┌─────────────────┐                                                         │
+│  │ For each line:  │                                                         │
+│  └────────┬────────┘                                                         │
+│           │                                                                  │
+│           ▼                                                                  │
+│  ┌─────────────────────┐     ┌─────────────────────┐                         │
+│  │ Force rejected?     │─Yes─▶│ Write to reject_f   │                         │
+│  └─────────┬───────────┘     └─────────────────────┘                         │
+│            │ No                                                              │
+│            ▼                                                                  │
+│  ┌─────────────────────┐     ┌─────────────────────┐                         │
+│  │ Matches stopword?   │─Yes─▶│ Write to reject_f   │                         │
+│  └─────────┬───────────┘     └─────────────────────┘                         │
+│            │ No                                                              │
+│            ▼                                                                  │
+│  ┌─────────────────────┐                                                     │
+│  │   process_line()    │                                                     │
+│  │  ┌───────────────┐  │                                                     │
+│  │  │ format_date   │  │                                                     │
+│  │  │ format_time   │  │                                                     │
+│  │  │format_duration│  │                                                     │
+│  │  └───────────────┘  │                                                     │
+│  └─────────┬───────────┘                                                     │
+│            │                                                                  │
+│            ▼                                                                  │
+│  ┌─────────────────────┐     ┌─────────────────────┐                         │
+│  │ Matches additional? │─Yes─▶│ Write to additional │                         │
+│  └─────────┬───────────┘     └─────────────────────┘                         │
+│            │ No                                                              │
+│            ▼                                                                  │
+│  ┌─────────────────────┐                                                     │
+│  │ Write to output     │                                                     │
+│  └─────────────────────┘                                                     │
+│                                                                              │
+│  ┌─────────────────────┐                                                     │
+│  │ Cleanup:            │                                                     │
+│  │ run_delete_columns()│──▶ Removes DELETE columns and empty rows            │
+│  └─────────────────────┘                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Pipeline Steps
 
 1. **File Discovery**: Find files matching station's extensions
 2. **Encoding Detection**: Auto-detect file encoding (UTF-8, CP1252, etc.)
