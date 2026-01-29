@@ -17,14 +17,13 @@ def detect_encoding(file_path):
     return encoding
 
 def remove_delete_columns_and_empty_rows(file_path):
-    """Remove columns named 'DELETE' and drop rows where 'Main Artist' or 'Track Title' is empty,
-    printing any deleted rows to the console."""
+    """Remove columns named 'DELETE' and drop rows where 'Main Artist' or 'Track Title' is empty."""
     detected_encoding = detect_encoding(file_path)
-    
+
     with open(file_path, 'r', newline='', encoding=detected_encoding, errors='replace') as infile:
         reader = csv.reader(infile, delimiter=';')
         rows = list(reader)
-    
+
     if not rows:
         print(f"No data found in file: {file_path}")
         sys.stdout.flush()
@@ -39,7 +38,7 @@ def remove_delete_columns_and_empty_rows(file_path):
         padded_row = row + [""] * (len(original_header) - len(row))
         cleaned_row = [value for i, value in enumerate(padded_row) if i not in delete_columns]
         cleaned_rows.append(cleaned_row)
-    
+
     cleaned_header = cleaned_rows[0]
     try:
         main_artist_idx = cleaned_header.index("Main Artist")
@@ -52,27 +51,38 @@ def remove_delete_columns_and_empty_rows(file_path):
         track_title_idx = None
 
     final_rows = [cleaned_header]
+    deleted_empty = 0
+    deleted_malformed = 0
+
     for row in cleaned_rows[1:]:
         # Skip short rows
         if len(row) <= max(main_artist_idx or 0, track_title_idx or 0):
-            print(f"Skipping malformed row (too few columns): {row}")
-            sys.stdout.flush()
+            deleted_malformed += 1
             continue
 
         if main_artist_idx is not None and track_title_idx is not None:
             artist_val = row[main_artist_idx].strip()
             title_val = row[track_title_idx].strip()
             if artist_val == "" or title_val == "":
-                print(f"Deleted row: {row}")
-                sys.stdout.flush()
-                continue  # skip this row
+                deleted_empty += 1
+                continue
         final_rows.append(row)
 
     with open(file_path, 'w', newline='', encoding='utf-8') as outfile:
         writer = csv.writer(outfile, delimiter=';')
         writer.writerows(final_rows)
-    
-    print(f"Finished cleaning. Updated file: {file_path}")
+
+    # Print summary
+    total_deleted = deleted_empty + deleted_malformed
+    if total_deleted > 0:
+        parts = []
+        if deleted_empty > 0:
+            parts.append(f"{deleted_empty} empty artist/title")
+        if deleted_malformed > 0:
+            parts.append(f"{deleted_malformed} malformed")
+        print(f"Removed {total_deleted} row(s): {', '.join(parts)}")
+
+    print(f"Columns removed: {len(delete_columns)}. Output: {file_path}")
     sys.stdout.flush()
 
 def main():
