@@ -63,17 +63,22 @@ class ChoicesManager:
         for key, data in self._choices.get("artist_title_fixes", {}).items():
             # Escape the key for TOML
             safe_key = key.replace("\\", "\\\\").replace('"', '\\"')
-            lines.append(f'"{safe_key}" = "{data["action"]}"')
+            # Handle both string values (from TOML) and dict values (from code)
+            action = data if isinstance(data, str) else data.get("action", "skip")
+            lines.append(f'"{safe_key}" = "{action}"')
 
         lines.append("")
         lines.append("[long_playing_times]")
 
         for key, data in self._choices.get("long_playing_times", {}).items():
             safe_key = key.replace("\\", "\\\\").replace('"', '\\"')
-            if data["action"] == "edit":
-                lines.append(f'"{safe_key}" = {{ action = "edit", time = "{data["time"]}" }}')
+            # Handle both string values (from TOML) and dict values (from code)
+            if isinstance(data, str):
+                lines.append(f'"{safe_key}" = "{data}"')
+            elif data.get("action") == "edit":
+                lines.append(f'"{safe_key}" = {{ action = "edit", time = "{data.get("time", "00:00")}" }}')
             else:
-                lines.append(f'"{safe_key}" = "{data["action"]}"')
+                lines.append(f'"{safe_key}" = "{data.get("action", "accept")}"')
 
         try:
             with open(self.choices_file, "w", encoding="utf-8") as f:
