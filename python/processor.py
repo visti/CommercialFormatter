@@ -144,12 +144,143 @@ def clear_checkpoint(output_dir: Path | None = None) -> None:
         checkpoint_path.unlink()
 
 
+def check_artist_title_split(
+    lines: list[str],
+    station: Station,
+) -> tuple[list[str], set[int]]:
+    """Check for and fix artist/title split issues where title contains ' - '.
+
+    Args:
+        lines: Input lines to check.
+        station: Station configuration.
+
+    Returns:
+        Tuple of (modified lines, set of line indices to reject).
+    """
+    title_idx = station.get_field_index("title", -1)
+    artist_idx = station.get_field_index("artist", -1)
+
+    if title_idx < 0 or artist_idx < 0:
+        return lines, set()
+
+    choices_manager = get_choices_manager()
+
+    # Find issues, skipping lines that match stopwords
+    issues_by_key: dict[tuple[str, str], list[int]] = {}
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        if station.matches_stopword_lower(line.lower()):
+            continue
+        fields = line.split(station.separator)
+        if len(fields) > max(title_idx, artist_idx) and " - " in fields[title_idx]:
+            key = (fields[title_idx], fields[artist_idx])
+            if key not in issues_by_key:
+                issues_by_key[key] = []
+            issues_by_key[key].append(i)
+
+    if not issues_by_key:
+        return lines, set()
+
+    console.warning(f"Found {len(issues_by_key)} unique artist/title split issue(s)")
+    print()
+
+    lines_to_fix: list[int] = []
+    reject_indices: set[int] = set()
+
+    for (title, artist), indices in issues_by_key.items():
+        title_parts = title.split(" - ", 1)
+        fixed_title = title_parts[1]
+        fixed_artist = f"{artist}-{title_parts[0]}"
+        count = len(indices)
+
+        # Check for remembered choice
+        remembered = choices_manager.get_artist_title_choice(title, artist)
+        if remembered:
+            if remembered == "fix":
+                lines_to_fix.extend(indices)
+                console.info(f"  Auto-fix (remembered): \"{title}\" -> \"{fixed_title}\" ({count}x)")
+                logging.log_user_choice("artist_title", f"{title} by {artist}", "fix (remembered)")
+            elif remembered == "reject":
+                reject_indices.update(indices)
+                console.info(f"  Auto-reject (remembered): \"{title}\" ({count}x)")
+                logging.log_user_choice("artist_title", f"{title} by {artist}", "reject (remembered)")
+            else:
+                console.info(f"  Auto-skip (remembered): \"{title}\" ({count}x)")
+                logging.log_user_choice("artist_title", f"{title} by {artist}", "skip (remembered)")
+            continue
+
+        console.info(f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)")
+        console.info(f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\"")
+
+        response = input("  [Y]es fix / [N]o skip / [X] reject: ").strip().lower()
+        if response in ("y", "yes", ""):
+            lines_to_fix.extend(indices)
+            console.success(f"  Will fix {count} occurrence(s)")
+            choices_manager.remember_artist_title_choice(title, artist, "fix")
+            logging.log_user_choice("artist_title", f"{title} by {artist}", "fix")
+        elif response in ("x", "reject"):
+            reject_indices.update(indices)
+            console.info(f"  Will reject {count} occurrence(s)")
+            choices_manager.remember_artist_title_choice(title, artist, "reject")
+            logging.log_user_choice("artist_title", f"{title} by {artist}", "reject")
+        else:
+            console.info("  Skipped")
+            choices_manager.remember_artist_title_choice(title, artist, "skip")
+            logging.log_user_choice("artist_title", f"{title} by {artist}", "skip")
+        print()
+
+    # Apply fixes
+    modified_lines = lines.copy()
+    for i in lines_to_fix:
+        fields = modified_lines[i].split(station.separator)
+        title_parts = fields[title_idx].split(" - ", 1)
+        fields[title_idx] = title_parts[1]
+        fields[artist_idx] = f"{fields[artist_idx]}-{title_parts[0]}"
+        modified_lines[i] = station.separator.join(fields)
+
+    return modified_lines, reject_indices
+
+
+def read_single_file(file_path: Path, station: Station) -> list[str]:
+    """Read a single file and apply initial transformations.
+
+    Args:
+        file_path: Path to file to read.
+        station: Station configuration.
+
+    Returns:
+        List of processed lines, or empty list on error.
+    """
+    try:
+        encoding = detect_encoding(file_path)
+        console.info(console.dim(f"    Encoding: {encoding}"))
+        content = file_path.read_text(encoding=encoding, errors="replace")
+    except Exception as e:
+        console.error(f"Could not read file {file_path}: {e}")
+        logging.log_error(f"Could not read file {file_path}", e)
+        return []
+
+    lines = content.splitlines()
+    logging.log_file_read(file_path, encoding, len(lines))
+
+    # Skip header lines
+    if station.skip_lines > 0 and lines:
+        lines = lines[station.skip_lines:]
+
+    # Apply configured transformations
+    if station.transformations:
+        lines = station.apply_transformations(lines, filename=file_path.stem)
+
+    return lines
+
+
 def read_files(
     files: list[Path],
     station: Station,
     stats: ProcessingStats | None = None,
 ) -> tuple[str, set[int]]:
-    """Read and concatenate all input files, applying station-specific transformations.
+    """Read and concatenate all input files, applying transformations and validation.
 
     Args:
         files: List of input file paths.
@@ -160,159 +291,41 @@ def read_files(
         Tuple of (concatenated content string, set of line indices to reject).
     """
     joined_content: list[str] = []
+    all_reject_indices: set[int] = set()
     total_files = len(files)
-    all_dash_reject_indices: set[int] = set()
-    choices_manager = get_choices_manager()
-    settings = get_settings()
 
+    # Phase 1: Read and transform files
     for idx, file_path in enumerate(files, 1):
         console.progress(idx, total_files, f"Reading {file_path.name}")
         if stats:
             stats.files_processed = idx
 
-        try:
-            # Detect encoding for each file
-            encoding = detect_encoding(file_path)
-            console.info(console.dim(f"    Encoding: {encoding}"))
-            content = file_path.read_text(encoding=encoding, errors="replace")
-        except Exception as e:
-            console.error(f"Could not read file {file_path}: {e}")
-            logging.log_error(f"Could not read file {file_path}", e)
+        lines = read_single_file(file_path, station)
+        if not lines:
             continue
 
-        lines = content.splitlines()
-        logging.log_file_read(file_path, encoding, len(lines))
-
-        # Skip header lines based on station config
-        if station.skip_lines > 0 and lines:
-            lines = lines[station.skip_lines :]
-
-        # Apply configured transformations
-        if station.transformations:
-            lines = station.apply_transformations(lines, filename=file_path.stem)
-
-        # Fix artist/title split error where title contains " - " (configurable)
+        # Phase 2: Check artist/title split (if configured)
         if station.fix_artist_title_split:
-            title_idx = station.get_field_index("title", -1)
-            artist_idx = station.get_field_index("artist", -1)
-
-            if title_idx >= 0 and artist_idx >= 0:
-                # Skip lines that match stopwords (they'll be rejected later anyway)
-                issues_by_key: dict[tuple[str, str], list[int]] = {}
-                for i, line in enumerate(lines):
-                    if line.strip():
-                        if station.matches_stopword_lower(line.lower()):
-                            continue
-                        fields = line.split(station.separator)
-                        if len(fields) > max(title_idx, artist_idx) and " - " in fields[title_idx]:
-                            key = (fields[title_idx], fields[artist_idx])
-                            if key not in issues_by_key:
-                                issues_by_key[key] = []
-                            issues_by_key[key].append(i)
-
-                # Prompt for each unique issue
-                if issues_by_key:
-                    console.warning(
-                        f"Found {len(issues_by_key)} unique artist/title split issue(s)"
-                    )
-                    print()
-
-                lines_to_fix: list[int] = []
-                dash_reject_indices: set[int] = set()
-
-                for (title, artist), indices in issues_by_key.items():
-                    title_parts = title.split(" - ", 1)
-                    fixed_title = title_parts[1]
-                    fixed_artist = f"{artist}-{title_parts[0]}"
-
-                    count = len(indices)
-
-                    # Check for remembered choice
-                    remembered = choices_manager.get_artist_title_choice(title, artist)
-                    if remembered:
-                        if remembered == "fix":
-                            lines_to_fix.extend(indices)
-                            console.info(
-                                f"  Auto-fix (remembered): \"{title}\" -> \"{fixed_title}\" ({count}x)"
-                            )
-                            logging.log_user_choice(
-                                "artist_title", f"{title} by {artist}", "fix (remembered)"
-                            )
-                        elif remembered == "reject":
-                            dash_reject_indices.update(indices)
-                            console.info(
-                                f"  Auto-reject (remembered): \"{title}\" ({count}x)"
-                            )
-                            logging.log_user_choice(
-                                "artist_title", f"{title} by {artist}", "reject (remembered)"
-                            )
-                        else:
-                            console.info(f"  Auto-skip (remembered): \"{title}\" ({count}x)")
-                            logging.log_user_choice(
-                                "artist_title", f"{title} by {artist}", "skip (remembered)"
-                            )
-                        continue
-
-                    console.info(
-                        f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)"
-                    )
-                    console.info(
-                        f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\""
-                    )
-
-                    response = input("  [Y]es fix / [N]o skip / [X] reject: ").strip().lower()
-                    if response in ("y", "yes", ""):
-                        lines_to_fix.extend(indices)
-                        console.success(f"  Will fix {count} occurrence(s)")
-                        choices_manager.remember_artist_title_choice(title, artist, "fix")
-                        logging.log_user_choice("artist_title", f"{title} by {artist}", "fix")
-                    elif response in ("x", "reject"):
-                        dash_reject_indices.update(indices)
-                        console.info(f"  Will reject {count} occurrence(s)")
-                        choices_manager.remember_artist_title_choice(title, artist, "reject")
-                        logging.log_user_choice(
-                            "artist_title", f"{title} by {artist}", "reject"
-                        )
-                    else:
-                        console.info("  Skipped")
-                        choices_manager.remember_artist_title_choice(title, artist, "skip")
-                        logging.log_user_choice("artist_title", f"{title} by {artist}", "skip")
-                    print()
-
-                # Apply fixes
-                for i in lines_to_fix:
-                    fields = lines[i].split(station.separator)
-                    title_parts = fields[title_idx].split(" - ", 1)
-                    fields[title_idx] = title_parts[1]
-                    fields[artist_idx] = f"{fields[artist_idx]}-{title_parts[0]}"
-                    lines[i] = station.separator.join(fields)
-
-                # Add dash reject indices with offset for global position
-                offset = len(joined_content)
-                all_dash_reject_indices.update(i + offset for i in dash_reject_indices)
+            lines, reject_indices = check_artist_title_split(lines, station)
+            # Offset indices to global position
+            offset = len(joined_content)
+            all_reject_indices.update(i + offset for i in reject_indices)
 
         joined_content.extend(lines)
 
-    # Check for long playing times in CSV-format stations
+    # Phase 3: Check long playing times (CSV stations only)
     if not station.positional:
-        # Get field indices from station config (auto-derived from headlines)
         title_idx = station.get_field_index("title", -1)
         artist_idx = station.get_field_index("artist", -1)
         time_idx = station.get_field_index("duration", -1)
 
         if title_idx >= 0 and artist_idx >= 0 and time_idx >= 0:
-            joined_content, reject_indices = check_long_playing_times(
+            joined_content, time_reject_indices = check_long_playing_times(
                 joined_content, station, title_idx, artist_idx, time_idx
             )
-        else:
-            reject_indices = set()
-    else:
-        reject_indices = set()
+            all_reject_indices.update(time_reject_indices)
 
-    # Merge dash delimiter rejections with other rejections
-    reject_indices.update(all_dash_reject_indices)
-
-    return "\n".join(joined_content), reject_indices
+    return "\n".join(joined_content), all_reject_indices
 
 
 def make_additional_filename(base_path: Path) -> Path:
