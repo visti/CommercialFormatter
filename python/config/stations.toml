@@ -62,8 +62,9 @@ extensions = ["txt"]
 positional = false
 has_headlines = false
 convert = false
-separator = ":"
+separator = ";"
 positions = [15, 13]
+transformations = ["replace_dash_separator", "prepend_filename"]
 headlines = [
   "Date of Broadcasting",
   "Track Starting Time",
@@ -133,6 +134,8 @@ has_headlines = false
 convert = false
 separator = ";"
 positions = []
+transformations = ["remove_title_suffix"]
+fix_artist_title_split = true
 headlines = [
   "Date of Broadcasting",
   "Track Starting Time",
@@ -160,6 +163,7 @@ skip_lines = 2  # Skip "Log udskrift..." line AND column headers
 convert = false
 separator = ";"
 positions = []
+transformations = ["split_datetime"]
 # Original: Tidspunkt;MelodiTitel;Kunstner;Komponist;Forfatter;Indspil.år;Indspil.land;Nationalitet;Pladeselsk.;Katalog Nr;Sp.tid;Studievært;Station
 # After split: Date;Time;MelodiTitel;Kunstner;Komponist;Forfatter;Indspil.år;Indspil.land;Nationalitet;Pladeselsk.;Katalog Nr;Sp.tid;Studievært;Station
 headlines = [
@@ -189,6 +193,7 @@ skip_lines = 2  # Skip "Print log:..." line AND column headers
 convert = false
 separator = ";"
 positions = []
+transformations = ["split_datetime"]
 # Original: Time;MelodyTitle;Artist;Composer;Writer;Pl.time;Host;Station
 # After split: Date;Time;MelodyTitle;Artist;Composer;Writer;Pl.time;Host;Station
 headlines = [

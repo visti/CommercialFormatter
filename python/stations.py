@@ -25,15 +25,44 @@ class Station:
     separator: str = ";"  # Output separator
     input_separator: str = ";"  # Input separator (defaults to same as output)
     headlines: list[str] = field(default_factory=list)
+    field_mappings: dict[str, int] = field(default_factory=dict)  # Semantic field indices
+    transformations: list[str] = field(default_factory=list)  # Line transformations to apply
+    fix_artist_title_split: bool = False  # Prompt to fix "Artist - Title" split issues
     # Pre-compiled for efficiency
     _stopword_pattern: Optional[re.Pattern] = field(default=None, repr=False)
     _stopwords: list[str] = field(default_factory=list, repr=False)
     _sorted_positions: list[int] = field(default_factory=list, repr=False)
+    _title_suffix_pattern: Optional[re.Pattern] = field(default=None, repr=False)
 
     def __post_init__(self):
-        """Pre-sort positions for efficient processing."""
+        """Pre-sort positions and derive field mappings from headlines if needed."""
         if self.positions:
             self._sorted_positions = sorted(self.positions)
+
+        # Auto-derive field_mappings from headlines if not explicitly set
+        if not self.field_mappings and self.headlines:
+            self._derive_field_mappings()
+
+        # Pre-compile title suffix pattern if needed
+        if "remove_title_suffix" in self.transformations:
+            self._title_suffix_pattern = re.compile(r" - ABC Powerhit", re.IGNORECASE)
+
+    def _derive_field_mappings(self):
+        """Derive field indices from headlines array."""
+        headline_to_field = {
+            "Track Title": "title",
+            "Main Artist": "artist",
+            "Track Playing Time": "duration",
+            "Date of Broadcasting": "date",
+            "Track Starting Time": "time",
+        }
+        for idx, headline in enumerate(self.headlines):
+            if headline in headline_to_field:
+                self.field_mappings[headline_to_field[headline]] = idx
+
+    def get_field_index(self, field_name: str, default: int = -1) -> int:
+        """Get field index by semantic name (title, artist, duration, etc.)."""
+        return self.field_mappings.get(field_name, default)
 
     @property
     def sorted_positions(self) -> list[int]:
@@ -60,6 +89,72 @@ class Station:
         if match:
             return match.group(0)
         return None
+
+    def apply_transformations(self, lines: list[str], filename: str = "") -> list[str]:
+        """Apply configured transformations to lines.
+
+        Args:
+            lines: Input lines to transform.
+            filename: Base filename (without extension) for prepend_filename.
+
+        Returns:
+            Transformed lines.
+        """
+        for transform in self.transformations:
+            if transform == "prepend_filename":
+                lines = self._transform_prepend_filename(lines, filename)
+            elif transform == "replace_dash_separator":
+                lines = self._transform_replace_dash(lines)
+            elif transform == "split_datetime":
+                lines = self._transform_split_datetime(lines)
+            elif transform == "remove_title_suffix":
+                lines = self._transform_remove_title_suffix(lines)
+        return lines
+
+    def _transform_prepend_filename(self, lines: list[str], filename: str) -> list[str]:
+        """Prepend filename to each line (for Globus-style files)."""
+        return [f"{filename}{line}" for line in lines if line.strip()]
+
+    def _transform_replace_dash(self, lines: list[str]) -> list[str]:
+        """Replace ' - ' with separator (for Globus-style files)."""
+        return [line.replace(" - ", self.separator) for line in lines]
+
+    def _transform_split_datetime(self, lines: list[str]) -> list[str]:
+        """Split 'DD-MM-YYYY HH-HH' into separate date and time fields."""
+        result = []
+        for line in lines:
+            if not line.strip():
+                continue
+            parts = line.split(self.separator, 1)
+            if len(parts) >= 1 and " " in parts[0]:
+                date_time = parts[0].split(" ", 1)
+                if len(date_time) == 2:
+                    date_part = date_time[0]
+                    time_range = date_time[1]
+                    hour = time_range.split("-")[0] if "-" in time_range else time_range
+                    time_part = f"{hour}:00:00"
+                    rest = parts[1] if len(parts) > 1 else ""
+                    line = f"{date_part}{self.separator}{time_part}{self.separator}{rest}"
+            result.append(line)
+        return result
+
+    def _transform_remove_title_suffix(self, lines: list[str]) -> list[str]:
+        """Remove title suffix pattern (e.g., ' - ABC Powerhit')."""
+        if self._title_suffix_pattern is None:
+            return lines
+        title_idx = self.get_field_index("title", -1)
+        if title_idx < 0:
+            return lines
+
+        result = []
+        for line in lines:
+            if line.strip():
+                fields = line.split(self.separator)
+                if len(fields) > title_idx:
+                    fields[title_idx] = self._title_suffix_pattern.sub("", fields[title_idx])
+                    line = self.separator.join(fields)
+            result.append(line)
+        return result
 
 
 def _load_stopwords() -> dict[str, list[str]]:
@@ -129,6 +224,9 @@ def _build_stations() -> tuple[dict[str, Station], dict[str, str]]:
             separator=output_sep,
             input_separator=input_sep,
             headlines=cfg.get("headlines", []),
+            field_mappings=cfg.get("field_mappings", {}),
+            transformations=cfg.get("transformations", []),
+            fix_artist_title_split=cfg.get("fix_artist_title_split", False),
         )
 
         # Store stopwords and compile pattern

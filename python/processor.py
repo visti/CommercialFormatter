@@ -217,171 +217,125 @@ def read_files(
         if station.skip_lines > 0 and lines:
             lines = lines[station.skip_lines :]
 
-        # Globus-specific: prepend filename and replace " - " with ";"
-        if station.name == "Globus":
-            base_filename = file_path.stem
-            processed_lines: list[str] = []
-            for line in lines:
-                if line.strip():
-                    line = line.replace(" - ", ";")
-                    line = f"{base_filename}{line}"
-                    processed_lines.append(line)
-            lines = processed_lines
+        # Apply configured transformations
+        if station.transformations:
+            lines = station.apply_transformations(lines, filename=file_path.stem)
 
-        # Skive/Skaga: split "DD-MM-YYYY HH-HH" into "DD-MM-YYYY;HH:00:00"
-        if station.name in ("Skive", "Skaga"):
-            processed_lines = []
-            for line in lines:
-                if line.strip():
-                    # Split first field (Tidspunkt) which contains "01-12-2025 00-01"
-                    parts = line.split(";", 1)
-                    if len(parts) >= 1 and " " in parts[0]:
-                        date_time = parts[0].split(" ", 1)
-                        if len(date_time) == 2:
-                            date_part = date_time[0]
-                            # Time is "00-01" format (hour range), take first hour
-                            time_range = date_time[1]
-                            hour = (
-                                time_range.split("-")[0]
-                                if "-" in time_range
-                                else time_range
+        # Fix artist/title split error where title contains " - " (configurable)
+        if station.fix_artist_title_split:
+            title_idx = station.get_field_index("title", -1)
+            artist_idx = station.get_field_index("artist", -1)
+
+            if title_idx >= 0 and artist_idx >= 0:
+                # Skip lines that match stopwords (they'll be rejected later anyway)
+                issues_by_key: dict[tuple[str, str], list[int]] = {}
+                for i, line in enumerate(lines):
+                    if line.strip():
+                        if station.matches_stopword_lower(line.lower()):
+                            continue
+                        fields = line.split(station.separator)
+                        if len(fields) > max(title_idx, artist_idx) and " - " in fields[title_idx]:
+                            key = (fields[title_idx], fields[artist_idx])
+                            if key not in issues_by_key:
+                                issues_by_key[key] = []
+                            issues_by_key[key].append(i)
+
+                # Prompt for each unique issue
+                if issues_by_key:
+                    console.warning(
+                        f"Found {len(issues_by_key)} unique artist/title split issue(s)"
+                    )
+                    print()
+
+                lines_to_fix: list[int] = []
+                dash_reject_indices: set[int] = set()
+
+                for (title, artist), indices in issues_by_key.items():
+                    title_parts = title.split(" - ", 1)
+                    fixed_title = title_parts[1]
+                    fixed_artist = f"{artist}-{title_parts[0]}"
+
+                    count = len(indices)
+
+                    # Check for remembered choice
+                    remembered = choices_manager.get_artist_title_choice(title, artist)
+                    if remembered:
+                        if remembered == "fix":
+                            lines_to_fix.extend(indices)
+                            console.info(
+                                f"  Auto-fix (remembered): \"{title}\" -> \"{fixed_title}\" ({count}x)"
                             )
-                            time_part = f"{hour}:00:00"
-                            # Reconstruct: date;time;rest_of_fields
-                            rest = parts[1] if len(parts) > 1 else ""
-                            line = f"{date_part};{time_part};{rest}"
-                    processed_lines.append(line)
-            lines = processed_lines
-
-        # ABC-specific transformations
-        if station.name == "ABC":
-            # Remove " - ABC PowerHit" suffix from titles (field index 7, case-insensitive)
-            powerhit_pattern = re.compile(r" - ABC Powerhit", re.IGNORECASE)
-            for i, line in enumerate(lines):
-                if line.strip():
-                    fields = line.split(";")
-                    if len(fields) > 7 and powerhit_pattern.search(fields[7]):
-                        fields[7] = powerhit_pattern.sub("", fields[7])
-                        lines[i] = ";".join(fields)
-
-            # Fix artist/title split error where title contains " - "
-            # Skip lines that match stopwords (they'll be rejected later anyway)
-            issues_by_key: dict[tuple[str, str], list[int]] = {}
-            for i, line in enumerate(lines):
-                if line.strip():
-                    # Skip lines that will be rejected by stopwords
-                    if station.matches_stopword_lower(line.lower()):
+                            logging.log_user_choice(
+                                "artist_title", f"{title} by {artist}", "fix (remembered)"
+                            )
+                        elif remembered == "reject":
+                            dash_reject_indices.update(indices)
+                            console.info(
+                                f"  Auto-reject (remembered): \"{title}\" ({count}x)"
+                            )
+                            logging.log_user_choice(
+                                "artist_title", f"{title} by {artist}", "reject (remembered)"
+                            )
+                        else:
+                            console.info(f"  Auto-skip (remembered): \"{title}\" ({count}x)")
+                            logging.log_user_choice(
+                                "artist_title", f"{title} by {artist}", "skip (remembered)"
+                            )
                         continue
-                    fields = line.split(";")
-                    if len(fields) > 8 and " - " in fields[7]:
-                        key = (fields[7], fields[8])
-                        if key not in issues_by_key:
-                            issues_by_key[key] = []
-                        issues_by_key[key].append(i)
 
-            # Prompt for each unique issue
-            if issues_by_key:
-                console.warning(
-                    f"Found {len(issues_by_key)} unique artist/title split issue(s)"
-                )
-                print()
+                    console.info(
+                        f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)"
+                    )
+                    console.info(
+                        f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\""
+                    )
 
-            lines_to_fix: list[int] = []
-            dash_reject_indices: set[int] = set()
-
-            for (title, artist), indices in issues_by_key.items():
-                title_parts = title.split(" - ", 1)
-                fixed_title = title_parts[1]
-                fixed_artist = f"{artist}-{title_parts[0]}"
-
-                count = len(indices)
-
-                # Check for remembered choice
-                remembered = choices_manager.get_artist_title_choice(title, artist)
-                if remembered:
-                    if remembered == "fix":
+                    response = input("  [Y]es fix / [N]o skip / [X] reject: ").strip().lower()
+                    if response in ("y", "yes", ""):
                         lines_to_fix.extend(indices)
-                        console.info(
-                            f"  Auto-fix (remembered): \"{title}\" -> \"{fixed_title}\" ({count}x)"
-                        )
-                        logging.log_user_choice(
-                            "artist_title", f"{title} by {artist}", "fix (remembered)"
-                        )
-                    elif remembered == "reject":
+                        console.success(f"  Will fix {count} occurrence(s)")
+                        choices_manager.remember_artist_title_choice(title, artist, "fix")
+                        logging.log_user_choice("artist_title", f"{title} by {artist}", "fix")
+                    elif response in ("x", "reject"):
                         dash_reject_indices.update(indices)
-                        console.info(
-                            f"  Auto-reject (remembered): \"{title}\" ({count}x)"
-                        )
+                        console.info(f"  Will reject {count} occurrence(s)")
+                        choices_manager.remember_artist_title_choice(title, artist, "reject")
                         logging.log_user_choice(
-                            "artist_title", f"{title} by {artist}", "reject (remembered)"
+                            "artist_title", f"{title} by {artist}", "reject"
                         )
                     else:
-                        console.info(f"  Auto-skip (remembered): \"{title}\" ({count}x)")
-                        logging.log_user_choice(
-                            "artist_title", f"{title} by {artist}", "skip (remembered)"
-                        )
-                    continue
+                        console.info("  Skipped")
+                        choices_manager.remember_artist_title_choice(title, artist, "skip")
+                        logging.log_user_choice("artist_title", f"{title} by {artist}", "skip")
+                    print()
 
-                console.info(
-                    f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)"
-                )
-                console.info(
-                    f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\""
-                )
+                # Apply fixes
+                for i in lines_to_fix:
+                    fields = lines[i].split(station.separator)
+                    title_parts = fields[title_idx].split(" - ", 1)
+                    fields[title_idx] = title_parts[1]
+                    fields[artist_idx] = f"{fields[artist_idx]}-{title_parts[0]}"
+                    lines[i] = station.separator.join(fields)
 
-                response = input("  [Y]es fix / [N]o skip / [X] reject: ").strip().lower()
-                if response in ("y", "yes", ""):
-                    lines_to_fix.extend(indices)
-                    console.success(f"  Will fix {count} occurrence(s)")
-                    choices_manager.remember_artist_title_choice(title, artist, "fix")
-                    logging.log_user_choice("artist_title", f"{title} by {artist}", "fix")
-                elif response in ("x", "reject"):
-                    dash_reject_indices.update(indices)
-                    console.info(f"  Will reject {count} occurrence(s)")
-                    choices_manager.remember_artist_title_choice(title, artist, "reject")
-                    logging.log_user_choice(
-                        "artist_title", f"{title} by {artist}", "reject"
-                    )
-                else:
-                    console.info("  Skipped")
-                    choices_manager.remember_artist_title_choice(title, artist, "skip")
-                    logging.log_user_choice("artist_title", f"{title} by {artist}", "skip")
-                print()
-
-            # Apply fixes
-            for i in lines_to_fix:
-                fields = lines[i].split(";")
-                title_parts = fields[7].split(" - ", 1)
-                fields[7] = title_parts[1]
-                fields[8] = f"{fields[8]}-{title_parts[0]}"
-                lines[i] = ";".join(fields)
-
-            # Add dash reject indices with offset for global position
-            offset = len(joined_content)
-            all_dash_reject_indices.update(i + offset for i in dash_reject_indices)
+                # Add dash reject indices with offset for global position
+                offset = len(joined_content)
+                all_dash_reject_indices.update(i + offset for i in dash_reject_indices)
 
         joined_content.extend(lines)
 
     # Check for long playing times in CSV-format stations
     if not station.positional:
-        # Determine field indices based on station
-        title_idx = 7
-        artist_idx = 8
-        time_idx = 2
+        # Get field indices from station config (auto-derived from headlines)
+        title_idx = station.get_field_index("title", -1)
+        artist_idx = station.get_field_index("artist", -1)
+        time_idx = station.get_field_index("duration", -1)
 
-        # Adjust for other station formats if needed
-        if station.name == "Skive":
-            title_idx = 2
-            artist_idx = 3
-            time_idx = 11
-        elif station.name == "Skaga":
-            title_idx = 2
-            artist_idx = 3
-            time_idx = 6
-
-        joined_content, reject_indices = check_long_playing_times(
-            joined_content, station, title_idx, artist_idx, time_idx
-        )
+        if title_idx >= 0 and artist_idx >= 0 and time_idx >= 0:
+            joined_content, reject_indices = check_long_playing_times(
+                joined_content, station, title_idx, artist_idx, time_idx
+            )
+        else:
+            reject_indices = set()
     else:
         reject_indices = set()
 
