@@ -147,8 +147,8 @@ Examples:
     komm_fmt Globus
     komm_fmt Globus --no-stopwords
     komm_fmt Radio4 --additional=Boulevard
-    komm_fmt 100fm --additional=Hits    (uses Bauer via alias)
-    komm_fmt GoFM                       (uses Jyskfynske via alias)
+    komm_fmt abc -f "Radio ABC.txt"     (process specific file only)
+    komm_fmt abc -f file1.txt -f file2.txt
     komm_fmt --list-stations            (show all stations and aliases)
         """,
     )
@@ -184,6 +184,13 @@ Examples:
         "--edit-choices",
         action="store_true",
         help="Open remembered choices file in nvim for editing",
+    )
+    parser.add_argument(
+        "-f", "--file",
+        action="append",
+        metavar="FILE",
+        dest="files",
+        help="Process specific file(s) instead of all matching files (can be used multiple times)",
     )
 
     args = parser.parse_args()
@@ -267,8 +274,24 @@ Examples:
     # Initialize stats tracking
     stats = console.ProcessingStats(output_file=output_filename)
 
-    # Find and process files
-    files = get_files(station, exclude_filename=output_filename)
+    # Find files to process
+    if args.files:
+        # Use specified files
+        files = []
+        for f in args.files:
+            p = Path(f)
+            if p.exists():
+                files.append(p)
+            else:
+                console.error(f"File not found: {f}")
+                sys.exit(1)
+        console.info(f"Processing {console.bold(str(len(files)))} specified file(s):")
+        for f in files:
+            console.info(f"  {console.dim('-')} {f.name}")
+        print()
+    else:
+        # Auto-discover files
+        files = get_files(station, exclude_filename=output_filename)
     stats.files_total = len(files)
 
     content, reject_indices = read_files(files, station, stats)
