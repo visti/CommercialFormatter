@@ -18,6 +18,7 @@ import app_logging as logging
 import output as console
 from choices import get_choices_manager
 from config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
+from formatters import format_date, format_time, format_duration, get_duration_minutes
 from settings import get_settings
 from stations import Station
 
@@ -357,92 +358,6 @@ def generate_rejection_filename(station: Station) -> Path:
     return REJECTDIR / filename
 
 
-def format_time_field(time_str: str) -> str:
-    """Format a 6-digit time string (HHMMSS) to HH:MM:SS.
-
-    Args:
-        time_str: Time string to format.
-
-    Returns:
-        Formatted time string.
-    """
-    if len(time_str) == 6:
-        return f"{time_str[0:2]}:{time_str[2:4]}:{time_str[4:6]}"
-    return time_str
-
-
-def fix_overflow_playing_time(playing_time: str, threshold: int | None = None) -> str:
-    """Fix buffer overflow in playing time for tracks starting before midnight.
-
-    Some stations incorrectly calculate playing time by adding 1440 minutes
-    (minutes in a day) when tracks span midnight.
-
-    Args:
-        playing_time: Time string in MM:SS format.
-        threshold: Minutes threshold for overflow detection. If None, uses settings.
-
-    Returns:
-        Corrected time string in MM:SS format.
-    """
-    if threshold is None:
-        settings = get_settings()
-        threshold = settings.thresholds.overflow_threshold_minutes
-
-    if ":" not in playing_time:
-        return playing_time
-
-    parts = playing_time.split(":")
-    if len(parts) < 2:
-        return playing_time
-
-    try:
-        minutes = int(parts[0])
-        seconds = int(parts[1])
-    except ValueError:
-        return playing_time
-
-    if minutes < threshold:
-        return playing_time
-
-    # Convert to total seconds
-    total_seconds = minutes * 60 + seconds
-    # 1440 minutes = 86400 seconds (one day)
-    correct_seconds = 86400 - total_seconds
-
-    if correct_seconds < 0:
-        return playing_time
-
-    # Convert back to MM:SS
-    correct_minutes = correct_seconds // 60
-    correct_secs = correct_seconds % 60
-
-    logging.log_overflow_fix(0, playing_time, f"{correct_minutes:02d}:{correct_secs:02d}")
-
-    return f"{correct_minutes:02d}:{correct_secs:02d}"
-
-
-def get_playing_time_minutes(playing_time: str) -> int | None:
-    """Extract total minutes from a playing time string.
-
-    Args:
-        playing_time: Time string in MM:SS format.
-
-    Returns:
-        Total minutes, or None if parsing fails.
-    """
-    if ":" not in playing_time:
-        return None
-
-    parts = playing_time.split(":")
-    if len(parts) < 2:
-        return None
-
-    try:
-        return int(parts[0])
-    except ValueError:
-        return None
-
-
 def check_long_playing_times(
     lines: list[str],
     station: Station,
@@ -480,8 +395,8 @@ def check_long_playing_times(
             continue
 
         # Get playing time and apply overflow fix first
-        playing_time = fix_overflow_playing_time(fields[time_idx])
-        minutes = get_playing_time_minutes(playing_time)
+        playing_time = format_duration(fields[time_idx])
+        minutes = get_duration_minutes(playing_time)
 
         if minutes is not None and minutes >= threshold:
             title = fields[title_idx] if len(fields) > title_idx else ""
@@ -692,54 +607,6 @@ def check_duplicates(
     return lines, lines_to_reject
 
 
-def format_date_field(date_str: str) -> str:
-    """Normalize date to DD-MM-YYYY format.
-
-    Handles:
-    - YYMMDD (6 digits) -> DD-MM-YYYY
-    - DDMMYYYY (8 digits) -> DD-MM-YYYY
-    - YYYY-MM-DD -> DD-MM-YYYY
-    - DD.MM.YYYY -> DD-MM-YYYY
-    - DD-MM-YYYY -> unchanged
-
-    Args:
-        date_str: Date string to normalize.
-
-    Returns:
-        Normalized date string in DD-MM-YYYY format.
-    """
-    date_str = date_str.strip()
-
-    # Handle 6-digit format: YYMMDD
-    if len(date_str) == 6 and date_str.isdigit():
-        yy = date_str[0:2]
-        mm = date_str[2:4]
-        dd = date_str[4:6]
-        year = f"20{yy}" if int(yy) < 50 else f"19{yy}"
-        return f"{dd}-{mm}-{year}"
-
-    # Handle 8-digit format: DDMMYYYY
-    if len(date_str) == 8 and date_str.isdigit():
-        dd = date_str[0:2]
-        mm = date_str[2:4]
-        yyyy = date_str[4:8]
-        return f"{dd}-{mm}-{yyyy}"
-
-    # Handle YYYY-MM-DD format (convert to DD-MM-YYYY)
-    if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
-        parts = date_str.split("-")
-        if len(parts) == 3 and len(parts[0]) == 4:
-            yyyy, mm, dd = parts
-            return f"{dd}-{mm}-{yyyy}"
-
-    # Handle DD.MM.YYYY format (convert to DD-MM-YYYY)
-    if len(date_str) == 10 and date_str[2] == "." and date_str[5] == ".":
-        return date_str.replace(".", "-")
-
-    # Already DD-MM-YYYY or unknown format, return as-is
-    return date_str
-
-
 def process_positional_line(
     line: str, sorted_positions: list[int], separator: str
 ) -> str:
@@ -765,7 +632,7 @@ def process_positional_line(
 
     # Format first field (date) if present
     if parts:
-        parts[0] = format_date_field(parts[0])
+        parts[0] = format_date(parts[0])
 
     return separator.join(parts)
 
@@ -785,15 +652,15 @@ def process_csv_line(line: str, separator: str = ";", input_separator: str = ";"
 
     # Format date field (index 0)
     if fields:
-        fields[0] = format_date_field(fields[0])
+        fields[0] = format_date(fields[0])
 
     # Format time field (index 1) if it's 6 digits
     if len(fields) > 1 and len(fields[1]) == 6:
-        fields[1] = format_time_field(fields[1])
+        fields[1] = format_time(fields[1])
 
     # Fix overflow playing time (index 2)
     if len(fields) > 2:
-        fields[2] = fix_overflow_playing_time(fields[2])
+        fields[2] = format_duration(fields[2])
 
     return separator.join(fields)
 
