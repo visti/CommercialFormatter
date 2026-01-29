@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -48,35 +47,6 @@ def detect_encoding(file_path: Path) -> str:
         # These are often misdetected; try cp1252 which is a superset
         encoding = "cp1252"
     return encoding or "utf-8"
-
-
-def backup_files(files: list[Path], backup_dir: str = "backup") -> Path | None:
-    """Create backups of input files before processing.
-
-    Args:
-        files: List of files to backup.
-        backup_dir: Name of backup directory.
-
-    Returns:
-        Path to backup directory, or None if backup is disabled.
-    """
-    settings = get_settings()
-    if not settings.backup.enabled:
-        return None
-
-    backup_path = Path.cwd() / backup_dir
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = backup_path / timestamp
-
-    backup_path.mkdir(parents=True, exist_ok=True)
-
-    for file_path in files:
-        dest = backup_path / file_path.name
-        shutil.copy2(file_path, dest)
-        logging.log_backup_created(file_path, dest)
-
-    console.info(f"Backup created: {console.dim(str(backup_path))}")
-    return backup_path
 
 
 def get_files(station: Station, exclude_filename: str = "") -> list[Path]:
@@ -486,11 +456,13 @@ def check_long_playing_times(
     # Find lines with long playing times, grouped by unique track
     issues_by_key: dict[tuple[str, str, str], list[int]] = {}
 
+    sep = station.separator
+
     for i, line in enumerate(lines):
         if not line.strip():
             continue
 
-        fields = line.split(";")
+        fields = line.split(sep)
         if len(fields) <= max(title_idx, artist_idx, time_idx):
             continue
 
@@ -544,10 +516,10 @@ def check_long_playing_times(
                 )
             elif remembered_action == "edit" and remembered_time:
                 for idx in indices:
-                    fields = modified_lines[idx].split(";")
+                    fields = modified_lines[idx].split(sep)
                     if len(fields) > time_idx:
                         fields[time_idx] = remembered_time
-                        modified_lines[idx] = ";".join(fields)
+                        modified_lines[idx] = sep.join(fields)
                 console.info(
                     f"  Auto-edit (remembered): \"{title}\" -> {remembered_time} ({count}x)"
                 )
@@ -588,10 +560,10 @@ def check_long_playing_times(
                         int(parts[0])
                         int(parts[1])
                         for idx in indices:
-                            fields = modified_lines[idx].split(";")
+                            fields = modified_lines[idx].split(sep)
                             if len(fields) > time_idx:
                                 fields[time_idx] = new_time
-                                modified_lines[idx] = ";".join(fields)
+                                modified_lines[idx] = sep.join(fields)
                         console.success(f"  Updated {count} occurrence(s) to {new_time}")
                         choices_manager.remember_playing_time_choice(
                             title, artist, playing_time, "edit", new_time
@@ -639,12 +611,13 @@ def check_duplicates(
     # Track seen combinations: (title, artist, date) -> first line index
     seen: dict[tuple[str, str, str], int] = {}
     duplicates: dict[tuple[str, str, str], list[int]] = {}
+    sep = station.separator
 
     for i, line in enumerate(lines):
         if not line.strip():
             continue
 
-        fields = line.split(";")
+        fields = line.split(sep)
         if len(fields) <= max(title_idx, artist_idx, date_idx):
             continue
 
