@@ -856,15 +856,22 @@ def process_files(
     if has_additional and additional_path:
         clean_empty_file(additional_path)
 
-    clean_empty_file(reject_path)
+    if reject_path:
+        clean_empty_file(reject_path)
 
-    # Check if output file is empty (only header)
+    # Check if output file is empty (only header) and run delete_columns
     if output_file.exists():
         output_content = output_file.read_text(encoding="utf-8", errors="replace")
         if output_content.count("\n") > 1:
             run_delete_columns(output_file)
         else:
             clean_empty_file(output_file)
+
+    # Also run delete_columns on rejection file
+    if reject_path and reject_path.exists():
+        reject_content = reject_path.read_text(encoding="utf-8", errors="replace")
+        if reject_content.count("\n") > 1:
+            run_delete_columns(reject_path)
 
     # Print stopword summary
     if stopword_counts and stats:
