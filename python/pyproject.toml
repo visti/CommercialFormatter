@@ -16,7 +16,7 @@ dependencies = [
 komm_fmt = "main:main"
 
 [tool.setuptools]
-py-modules = ["main", "config", "stations", "processor", "output", "app_logging", "choices", "settings"]
+py-modules = ["main", "config", "stations", "processor", "output", "app_logging", "choices", "settings", "decisions", "formatters"]
 
 [tool.setuptools.package-data]
 "*" = ["config/*.toml", "lib/*.py"]
