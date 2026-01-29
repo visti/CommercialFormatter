@@ -1,0 +1,41 @@
+# Global Settings Configuration
+# Edit this file to customize behavior without changing code
+
+[thresholds]
+# Playing time threshold in minutes - tracks over this trigger a prompt
+long_playing_time_minutes = 30
+
+# Overflow threshold in minutes - times >= this are corrected (1440 = 24 hours)
+overflow_threshold_minutes = 1400
+
+[backup]
+# Enable automatic backup of input files before processing
+enabled = true
+
+# Backup directory name (created in current working directory)
+directory = "backup"
+
+[logging]
+# Enable logging to file
+enabled = true
+
+# Log file location (relative to output directory, or absolute path)
+# Use {date} for current date, {station} for station name
+filename = "logs/komm_fmt_{date}_{station}.log"
+
+# Log level: DEBUG, INFO, WARNING, ERROR
+level = "INFO"
+
+[duplicates]
+# Enable duplicate track detection
+enabled = true
+
+# Action for duplicates: "prompt", "keep", "reject"
+action = "prompt"
+
+[choices]
+# Remember user choices for artist/title fixes across sessions
+remember_fixes = true
+
+# File to store remembered choices
+choices_file = "config/remembered_choices.toml"

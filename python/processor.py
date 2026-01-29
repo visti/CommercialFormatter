@@ -18,6 +18,7 @@ import app_logging as logging
 import output as console
 from choices import get_choices_manager
 from config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
+from decisions import DecisionManager, ARTIST_TITLE_CONFIG, LONG_TIME_CONFIG, DUPLICATE_CONFIG
 from formatters import format_date, format_time, format_duration, get_duration_minutes
 from settings import get_settings
 from stations import Station
@@ -167,7 +168,7 @@ def check_artist_title_split(
     choices_manager = get_choices_manager()
 
     # Find issues, skipping lines that match stopwords
-    issues_by_key: dict[tuple[str, str], list[int]] = {}
+    issues: dict[tuple[str, str], list[int]] = {}
     for i, line in enumerate(lines):
         if not line.strip():
             continue
@@ -176,63 +177,57 @@ def check_artist_title_split(
         fields = line.split(station.separator)
         if len(fields) > max(title_idx, artist_idx) and " - " in fields[title_idx]:
             key = (fields[title_idx], fields[artist_idx])
-            if key not in issues_by_key:
-                issues_by_key[key] = []
-            issues_by_key[key].append(i)
+            if key not in issues:
+                issues[key] = []
+            issues[key].append(i)
 
-    if not issues_by_key:
+    if not issues:
         return lines, set()
 
-    console.warning(f"Found {len(issues_by_key)} unique artist/title split issue(s)")
-    print()
-
+    # Track lines to fix
     lines_to_fix: list[int] = []
-    reject_indices: set[int] = set()
+    modified_lines = lines.copy()
 
-    for (title, artist), indices in issues_by_key.items():
+    def display_issue(key: tuple, indices: list[int], count: int) -> None:
+        title, artist = key
         title_parts = title.split(" - ", 1)
         fixed_title = title_parts[1]
         fixed_artist = f"{artist}-{title_parts[0]}"
-        count = len(indices)
-
-        # Check for remembered choice
-        remembered = choices_manager.get_artist_title_choice(title, artist)
-        if remembered:
-            if remembered == "fix":
-                lines_to_fix.extend(indices)
-                console.info(f"  Auto-fix (remembered): \"{title}\" -> \"{fixed_title}\" ({count}x)")
-                logging.log_user_choice("artist_title", f"{title} by {artist}", "fix (remembered)")
-            elif remembered == "reject":
-                reject_indices.update(indices)
-                console.info(f"  Auto-reject (remembered): \"{title}\" ({count}x)")
-                logging.log_user_choice("artist_title", f"{title} by {artist}", "reject (remembered)")
-            else:
-                console.info(f"  Auto-skip (remembered): \"{title}\" ({count}x)")
-                logging.log_user_choice("artist_title", f"{title} by {artist}", "skip (remembered)")
-            continue
-
         console.info(f"  Current: Title=\"{title}\" Artist=\"{artist}\" ({count}x)")
         console.info(f"  Fixed:   Title=\"{fixed_title}\" Artist=\"{fixed_artist}\"")
 
-        response = input("  [Y]es fix / [N]o skip / [X] reject: ").strip().lower()
-        if response in ("y", "yes", ""):
+    def apply_action(action: str, key: tuple, indices: list[int], _extra: any) -> set[int]:
+        if action == "fix":
             lines_to_fix.extend(indices)
-            console.success(f"  Will fix {count} occurrence(s)")
-            choices_manager.remember_artist_title_choice(title, artist, "fix")
-            logging.log_user_choice("artist_title", f"{title} by {artist}", "fix")
-        elif response in ("x", "reject"):
-            reject_indices.update(indices)
-            console.info(f"  Will reject {count} occurrence(s)")
-            choices_manager.remember_artist_title_choice(title, artist, "reject")
-            logging.log_user_choice("artist_title", f"{title} by {artist}", "reject")
+            console.success(f"  Will fix {len(indices)} occurrence(s)")
+            return set()
+        elif action == "reject":
+            console.info(f"  Will reject {len(indices)} occurrence(s)")
+            return set(indices)
         else:
             console.info("  Skipped")
-            choices_manager.remember_artist_title_choice(title, artist, "skip")
-            logging.log_user_choice("artist_title", f"{title} by {artist}", "skip")
-        print()
+            return set()
 
-    # Apply fixes
-    modified_lines = lines.copy()
+    def get_remembered(key: tuple) -> str | None:
+        return choices_manager.get_artist_title_choice(key[0], key[1])
+
+    def remember_choice(key: tuple, action: str, _extra: any) -> None:
+        choices_manager.remember_artist_title_choice(key[0], key[1], action)
+
+    manager = DecisionManager(
+        ARTIST_TITLE_CONFIG,
+        get_remembered=get_remembered,
+        remember_choice=remember_choice,
+    )
+
+    reject_indices = manager.process_issues(
+        issues,
+        display_issue=display_issue,
+        apply_action=apply_action,
+        summary_message=f"Found {len(issues)} unique artist/title split issue(s)",
+    )
+
+    # Apply fixes to lines
     for i in lines_to_fix:
         fields = modified_lines[i].split(station.separator)
         title_parts = fields[title_idx].split(" - ", 1)
@@ -382,8 +377,7 @@ def check_long_playing_times(
     choices_manager = get_choices_manager()
 
     # Find lines with long playing times, grouped by unique track
-    issues_by_key: dict[tuple[str, str, str], list[int]] = {}
-
+    issues: dict[tuple[str, str, str], list[int]] = {}
     sep = station.separator
 
     for i, line in enumerate(lines):
@@ -403,114 +397,92 @@ def check_long_playing_times(
             artist = fields[artist_idx] if len(fields) > artist_idx else ""
             key = (title, artist, playing_time)
 
-            if key not in issues_by_key:
-                issues_by_key[key] = []
-            issues_by_key[key].append(i)
+            if key not in issues:
+                issues[key] = []
+            issues[key].append(i)
 
-    if not issues_by_key:
+    if not issues:
         return lines, set()
 
-    console.warning(
-        f"Found {len(issues_by_key)} unique track(s) with playing time over {threshold} minutes"
-    )
-    print()
-
-    lines_to_reject: set[int] = set()
+    # Track edits to apply
+    edits_to_apply: dict[int, str] = {}
     modified_lines = lines.copy()
 
-    for (title, artist, playing_time), indices in issues_by_key.items():
-        count = len(indices)
-
-        # Check for remembered choice
-        remembered_action, remembered_time = choices_manager.get_playing_time_choice(
-            title, artist, playing_time
-        )
-
-        if remembered_action:
-            if remembered_action == "accept":
-                console.info(
-                    f"  Auto-accept (remembered): \"{title}\" - {playing_time} ({count}x)"
-                )
-                logging.log_user_choice(
-                    "long_time", f"{title} ({playing_time})", "accept (remembered)"
-                )
-            elif remembered_action == "reject":
-                lines_to_reject.update(indices)
-                console.info(
-                    f"  Auto-reject (remembered): \"{title}\" - {playing_time} ({count}x)"
-                )
-                logging.log_user_choice(
-                    "long_time", f"{title} ({playing_time})", "reject (remembered)"
-                )
-            elif remembered_action == "edit" and remembered_time:
-                for idx in indices:
-                    fields = modified_lines[idx].split(sep)
-                    if len(fields) > time_idx:
-                        fields[time_idx] = remembered_time
-                        modified_lines[idx] = sep.join(fields)
-                console.info(
-                    f"  Auto-edit (remembered): \"{title}\" -> {remembered_time} ({count}x)"
-                )
-                logging.log_user_choice(
-                    "long_time", f"{title} ({playing_time})", f"edit to {remembered_time} (remembered)"
-                )
-            continue
-
+    def display_issue(key: tuple, indices: list[int], count: int) -> None:
+        title, artist, playing_time = key
         console.info(f'  Title:  "{title}"')
         console.info(f'  Artist: "{artist}"')
         console.info(f"  Time:   {playing_time} ({count}x)")
 
-        while True:
-            response = input("  [A]ccept / [R]eject / [E]dit: ").strip().lower()
+    def apply_action(action: str, key: tuple, indices: list[int], extra: any) -> set[int]:
+        title, artist, playing_time = key
+        count = len(indices)
 
-            if response in ("a", "accept", ""):
-                console.success(f"  Accepted {count} occurrence(s)")
-                choices_manager.remember_playing_time_choice(
-                    title, artist, playing_time, "accept"
-                )
-                logging.log_user_choice("long_time", f"{title} ({playing_time})", "accept")
-                break
+        if action == "accept":
+            console.success(f"  Accepted {count} occurrence(s)")
+            return set()
+        elif action == "reject":
+            console.info(f"  Will reject {count} occurrence(s)")
+            return set(indices)
+        elif action == "edit" and extra:
+            new_time = extra
+            for idx in indices:
+                edits_to_apply[idx] = new_time
+            console.success(f"  Updated {count} occurrence(s) to {new_time}")
+            return set()
+        return set()
 
-            elif response in ("r", "reject"):
-                lines_to_reject.update(indices)
-                console.info(f"  Will reject {count} occurrence(s)")
-                choices_manager.remember_playing_time_choice(
-                    title, artist, playing_time, "reject"
-                )
-                logging.log_user_choice("long_time", f"{title} ({playing_time})", "reject")
-                break
+    def get_remembered(key: tuple) -> tuple[str, str | None] | None:
+        title, artist, playing_time = key
+        action, new_time = choices_manager.get_playing_time_choice(title, artist, playing_time)
+        if action:
+            return (action, new_time)
+        return None
 
-            elif response in ("e", "edit"):
-                new_time = input("  Enter corrected time (MM:SS): ").strip()
-                if ":" in new_time:
-                    parts = new_time.split(":")
-                    try:
-                        int(parts[0])
-                        int(parts[1])
-                        for idx in indices:
-                            fields = modified_lines[idx].split(sep)
-                            if len(fields) > time_idx:
-                                fields[time_idx] = new_time
-                                modified_lines[idx] = sep.join(fields)
-                        console.success(f"  Updated {count} occurrence(s) to {new_time}")
-                        choices_manager.remember_playing_time_choice(
-                            title, artist, playing_time, "edit", new_time
-                        )
-                        logging.log_user_choice(
-                            "long_time", f"{title} ({playing_time})", f"edit to {new_time}"
-                        )
-                        break
-                    except ValueError:
-                        console.error("  Invalid time format. Use MM:SS (e.g., 03:45)")
-                else:
-                    console.error("  Invalid time format. Use MM:SS (e.g., 03:45)")
+    def remember_choice(key: tuple, action: str, extra: any) -> None:
+        title, artist, playing_time = key
+        choices_manager.remember_playing_time_choice(title, artist, playing_time, action, extra)
 
-            else:
-                console.error("  Invalid choice. Enter A, R, or E")
+    def handle_edit_input(action: str) -> any:
+        if action != "edit":
+            return None
 
-        print()
+        new_time = input("  Enter corrected time (MM:SS): ").strip()
+        if ":" not in new_time:
+            console.error("  Invalid time format. Use MM:SS (e.g., 03:45)")
+            return False  # Signal to re-prompt
 
-    return modified_lines, lines_to_reject
+        parts = new_time.split(":")
+        try:
+            int(parts[0])
+            int(parts[1])
+            return new_time
+        except ValueError:
+            console.error("  Invalid time format. Use MM:SS (e.g., 03:45)")
+            return False  # Signal to re-prompt
+
+    manager = DecisionManager(
+        LONG_TIME_CONFIG,
+        get_remembered=get_remembered,
+        remember_choice=remember_choice,
+    )
+
+    reject_indices = manager.process_issues(
+        issues,
+        display_issue=display_issue,
+        apply_action=apply_action,
+        summary_message=f"Found {len(issues)} unique track(s) with playing time over {threshold} minutes",
+        extra_input_handler=handle_edit_input,
+    )
+
+    # Apply edits to lines
+    for idx, new_time in edits_to_apply.items():
+        fields = modified_lines[idx].split(sep)
+        if len(fields) > time_idx:
+            fields[time_idx] = new_time
+            modified_lines[idx] = sep.join(fields)
+
+    return modified_lines, reject_indices
 
 
 def check_duplicates(
@@ -567,44 +539,47 @@ def check_duplicates(
         return lines, set()
 
     total_dups = sum(len(indices) - 1 for indices in duplicates.values())
-    console.warning(f"Found {total_dups} duplicate track(s) across {len(duplicates)} unique tracks")
-    print()
-
-    lines_to_reject: set[int] = set()
     action = settings.duplicates.action
 
+    # Handle auto-actions from config
     if action == "reject":
-        # Auto-reject all duplicates (keep first occurrence)
+        lines_to_reject = set()
         for indices in duplicates.values():
             lines_to_reject.update(indices[1:])  # Skip first (original)
-        console.info(f"  Auto-rejected {total_dups} duplicate(s)")
+        console.warning(f"Found {total_dups} duplicate track(s) - auto-rejected (as configured)")
+        return lines, lines_to_reject
     elif action == "keep":
-        console.info("  Keeping all duplicates (as configured)")
-    else:  # prompt
-        for key, indices in duplicates.items():
-            title, artist, date = key
-            dup_count = len(indices) - 1
+        console.warning(f"Found {total_dups} duplicate track(s) - keeping all (as configured)")
+        return lines, set()
 
-            console.info(f'  Title:  "{title}"')
-            console.info(f'  Artist: "{artist}"')
-            console.info(f"  Date:   {date}")
-            console.info(f"  Found {dup_count} duplicate(s) (lines: {indices[1:]})")
+    # Prompt mode - use DecisionManager
+    def display_issue(key: tuple, indices: list[int], count: int) -> None:
+        title, artist, date = key
+        dup_count = len(indices) - 1
+        console.info(f'  Title:  "{title}"')
+        console.info(f'  Artist: "{artist}"')
+        console.info(f"  Date:   {date}")
+        console.info(f"  Found {dup_count} duplicate(s) (lines: {indices[1:]})")
 
-            response = input("  [K]eep all / [R]eject duplicates: ").strip().lower()
-            if response in ("r", "reject"):
-                lines_to_reject.update(indices[1:])
-                console.info(f"  Rejected {dup_count} duplicate(s)")
-                logging.log_user_choice(
-                    "duplicate", f"{title} by {artist} on {date}", "reject"
-                )
-            else:
-                console.info("  Keeping all")
-                logging.log_user_choice(
-                    "duplicate", f"{title} by {artist} on {date}", "keep"
-                )
-            print()
+    def apply_action(action: str, key: tuple, indices: list[int], _extra: any) -> set[int]:
+        dup_count = len(indices) - 1
+        if action == "reject":
+            console.info(f"  Rejected {dup_count} duplicate(s)")
+            return set(indices[1:])  # Keep first, reject rest
+        else:
+            console.info("  Keeping all")
+            return set()
 
-    return lines, lines_to_reject
+    manager = DecisionManager(DUPLICATE_CONFIG)
+
+    reject_indices = manager.process_issues(
+        duplicates,
+        display_issue=display_issue,
+        apply_action=apply_action,
+        summary_message=f"Found {total_dups} duplicate track(s) across {len(duplicates)} unique tracks",
+    )
+
+    return lines, reject_indices
 
 
 def process_positional_line(
