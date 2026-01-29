@@ -2,17 +2,9 @@
 
 A tool for processing broadcast metadata files from Danish radio stations. Extracts track information, filters unwanted content (jingles, promos, etc.), and outputs clean CSV files for reporting.
 
-## Implementations
+## Installation
 
-Two implementations are available:
-- **Python** (recommended): Easier to configure, install via pip
-- **Odin**: Original implementation, compiled binary
-
----
-
-## Python Implementation
-
-### Installation
+### From Source
 
 ```bash
 cd python
@@ -20,6 +12,14 @@ pip install -e .
 ```
 
 This installs the `komm_fmt` command globally.
+
+### Docker
+
+```bash
+cd python
+docker build -t commercial-formatter .
+docker run -it -v /path/to/files:/data commercial-formatter [station]
+```
 
 ### Usage
 
@@ -145,12 +145,6 @@ Options:
 
 #### ABC-Specific Stopwords
 
-Lines containing these patterns are automatically rejected:
-- "Radio ABC"
-- "ABC live"
-
-These are checked before the artist/title split prompt, so rejected lines won't appear in the prompt.
-
 ### Date Format Normalization
 
 Automatically normalizes various date formats to DD-MM-YYYY:
@@ -158,6 +152,7 @@ Automatically normalizes various date formats to DD-MM-YYYY:
 | Input Format | Example | Output |
 |--------------|---------|--------|
 | YYMMDD | 251001 | 01-10-2025 |
+| DDMMYYYY | 01102025 | 01-10-2025 |
 | YYYY-MM-DD | 2025-10-01 | 01-10-2025 |
 | DD.MM.YYYY | 01.10.2025 | 01-10-2025 |
 
@@ -176,31 +171,26 @@ Output: 23:59:17
 
 ```
 commercial_formatter/
-├── python/                     # Python implementation
-│   ├── main.py                 # CLI entry point
-│   ├── processor.py            # Core processing logic
-│   ├── stations.py             # Station loading from TOML
-│   ├── output.py               # Console output and formatting
-│   ├── config.py               # Global paths and constants
-│   ├── pyproject.toml          # Package configuration
-│   ├── config/
-│   │   ├── stations.toml       # Station definitions
-│   │   ├── stopwords.toml      # Rejection wordlists
-│   │   └── folders.toml        # Folder-to-station mappings
-│   └── lib/
-│       ├── convert.py          # XLSX to CSV converter
-│       ├── delete_columns.py   # Remove DELETE columns from output
-│       └── delete_podcast.py   # Podcast removal utility
-│
-└── odin/                       # Odin implementation
-    ├── main.odin               # Entry point
-    ├── stations.odin           # Station definitions
-    ├── process_files.odin      # Processing logic
-    ├── io.odin                 # File I/O operations
-    ├── globals.odin            # Global constants
-    ├── helpers.odin            # Utility functions
-    ├── build.sh                # Build script
-    └── komm_fmt_odin           # Compiled binary
+└── python/
+    ├── main.py                 # CLI entry point
+    ├── processor.py            # Core processing logic
+    ├── stations.py             # Station loading from TOML
+    ├── output.py               # Console output and formatting
+    ├── config.py               # Global paths and constants
+    ├── choices.py              # User choice persistence
+    ├── settings.py             # Settings management
+    ├── app_logging.py          # Logging utilities
+    ├── pyproject.toml          # Package configuration
+    ├── Dockerfile              # Docker build file
+    ├── config/
+    │   ├── stations.toml       # Station definitions
+    │   ├── stopwords.toml      # Rejection wordlists
+    │   ├── folders.toml        # Folder-to-station mappings
+    │   └── settings.toml       # Application settings
+    └── lib/
+        ├── convert.py          # XLSX to CSV converter
+        ├── delete_columns.py   # Remove DELETE columns from output
+        └── delete_podcast.py   # Podcast removal utility
 ```
 
 ---
@@ -220,7 +210,8 @@ positional = false
 has_headlines = false
 convert = false
 separator = ";"
-positions = []
+transformations = ["remove_title_suffix"]
+fix_artist_title_split = true
 headlines = [
   "Date of Broadcasting",
   "Track Starting Time",
@@ -239,6 +230,8 @@ headlines = [
 ]
 ```
 
+#### Basic Fields
+
 | Field | Description |
 |-------|-------------|
 | `name` | Display name |
@@ -249,8 +242,40 @@ headlines = [
 | `has_headlines` | `true` if input files have a header row |
 | `skip_lines` | Number of header lines to skip (default: 1 if has_headlines) |
 | `convert` | `true` to run XLSX converter first |
-| `separator` | Output field separator (`;` or `:`) |
+| `separator` | Output field separator |
+| `input_separator` | Input field separator (defaults to `separator`) |
 | `headlines` | Column headers (`"DELETE"` marks columns for removal) |
+
+#### Advanced Fields
+
+| Field | Description |
+|-------|-------------|
+| `transformations` | List of line transformations to apply (see below) |
+| `fix_artist_title_split` | `true` to prompt for fixing "Artist - Title" issues |
+| `field_mappings` | Custom field indices (auto-derived from headlines if not set) |
+
+#### Available Transformations
+
+| Transformation | Description | Used By |
+|----------------|-------------|---------|
+| `prepend_filename` | Prepend filename to each line | Globus |
+| `replace_dash_separator` | Replace " - " with separator | Globus |
+| `split_datetime` | Split "DD-MM-YYYY HH-HH" into date + time | Skive, Skaga |
+| `remove_title_suffix` | Remove " - ABC Powerhit" from titles | ABC |
+
+#### Field Mappings
+
+Field indices are automatically derived from the `headlines` array by looking for these column names:
+- `"Track Title"` → `title`
+- `"Main Artist"` → `artist`
+- `"Track Playing Time"` → `duration`
+- `"Date of Broadcasting"` → `date`
+- `"Track Starting Time"` → `time`
+
+You can override with explicit mappings if needed:
+```toml
+field_mappings = { title = 7, artist = 8, duration = 2 }
+```
 
 ### Stopwords (`config/stopwords.toml`)
 
@@ -313,16 +338,14 @@ Maps folder names to station aliases for auto-detection:
 1. **File Discovery**: Find files matching station's extensions
 2. **Encoding Detection**: Auto-detect file encoding (UTF-8, CP1252, etc.)
 3. **Header Skipping**: Skip configured number of header lines
-4. **Station Transforms**: Apply station-specific preprocessing
-   - Globus: Prepend filename, replace " - " with ";"
-   - Skive: Split date/time field
-   - ABC: Remove PowerHit suffix, fix artist/title splits
-5. **Long Playing Time Check**: Prompt for tracks > 30 minutes
-6. **Stopword Filtering**: Reject lines matching stopwords
-7. **Line Processing**: Format dates, times, extract fields
-8. **Playing Time Fix**: Correct midnight overflow times
-9. **Output Routing**: Write to main, additional, or reject file
-10. **Column Cleanup**: Remove DELETE columns, empty rows
+4. **Transformations**: Apply configured transformations (e.g., `split_datetime`, `prepend_filename`)
+5. **Artist/Title Fix**: Prompt for "Artist - Title" issues (if `fix_artist_title_split = true`)
+6. **Long Playing Time Check**: Prompt for tracks > 30 minutes
+7. **Stopword Filtering**: Reject lines matching stopwords
+8. **Line Processing**: Format dates, times, extract fields
+9. **Playing Time Fix**: Correct midnight overflow times
+10. **Output Routing**: Write to main, additional, or reject file
+11. **Column Cleanup**: Remove DELETE columns, empty rows
 
 ---
 
@@ -416,27 +439,33 @@ Processing lines...
 
 ## Adding a New Station
 
-1. Edit `python/config/stations.toml`:
+Most new stations can be added with **config-only changes** - no Python code needed.
+
+### 1. Add station definition (`config/stations.toml`)
 
 ```toml
 [newstation]
 name = "New Station"
 aliases = ["ns", "newst"]
 extensions = ["txt"]
-positional = true
-positions = [100, 80, 60, 40, 20, 10]
-has_headlines = false
-separator = ";"
+positional = false           # false = delimited, true = fixed-width
+has_headlines = true         # true if first row is headers
+skip_lines = 1               # lines to skip (default: 1 if has_headlines)
+separator = ";"              # output separator
+input_separator = ","        # input separator (if different from output)
+transformations = []         # optional: ["split_datetime", "prepend_filename", etc.]
+fix_artist_title_split = false  # optional: prompt to fix "Artist - Title" issues
 headlines = [
     "Date of Broadcasting",
     "Track Starting Time",
     "Track Playing Time",
     "Track Title",
     "Main Artist",
+    "DELETE",                # columns marked DELETE are removed
 ]
 ```
 
-2. Add stopwords in `python/config/stopwords.toml`:
+### 2. Add stopwords (`config/stopwords.toml`)
 
 ```toml
 [newstation]
@@ -446,26 +475,68 @@ words = [
 ]
 ```
 
-3. Add folder mapping in `python/config/folders.toml`:
+### 3. Add folder mapping (`config/folders.toml`)
 
 ```toml
 [folders]
 "NewStation" = "ns"
+"New Station Folder" = "newstation"
+```
+
+### Examples by Format Type
+
+**CSV with comma input, semicolon output (like Limfjord):**
+```toml
+[mystation]
+name = "My Station"
+extensions = ["csv"]
+positional = false
+has_headlines = true
+separator = ";"
+input_separator = ","
+headlines = ["Date of Broadcasting", "Track Starting Time", ...]
+```
+
+**Combined date/time field (like Skive/Skaga):**
+```toml
+[mystation]
+name = "My Station"
+extensions = ["csv"]
+positional = false
+has_headlines = true
+skip_lines = 2              # skip extra header line
+separator = ";"
+transformations = ["split_datetime"]
+headlines = ["Date of Broadcasting", "Track Starting Time", ...]  # after split
+```
+
+**Fixed-width format (like Bauer):**
+```toml
+[mystation]
+name = "My Station"
+extensions = ["txt"]
+positional = true
+positions = [185, 179, 173, 168, 163, 153, 128, 78, 28, 19, 14, 6]
+has_headlines = false
+separator = ";"
+headlines = ["Date of Broadcasting", "Track Starting Time", ...]
 ```
 
 ---
 
 ## Supported Stations
 
-| Station | Aliases | Format |
-|---------|---------|--------|
-| Bauer | nova, radio100, 100fm, thevoice, voice, myrock, pop | Positional |
-| Jyskfynske | jfm, vlr, viborg, classicfm, skala | Positional |
-| Globus | - | Delimited |
-| Radio4 | r4, "radio 4" | CSV (XLSX convert) |
-| ANR | nordjyske, radionordjylland, nordjylland | Positional |
-| ABC | solo, gofm, radiom, silkeborg | Delimited |
-| Skive | "radio skive" | Delimited |
+| Station | Aliases | Format | Notes |
+|---------|---------|--------|-------|
+| Bauer | nova, radio100, 100fm, thevoice, voice, myrock, pop | Positional | |
+| Jyskfynske | jfm, vlr, viborg, classicfm, skala | Positional | |
+| Globus | - | Delimited | Prepends filename |
+| Radio4 | r4, "radio 4" | CSV | XLSX conversion |
+| ANR | nordjyske, radionordjylland, nordjylland | Positional | |
+| ABC | solo, gofm, radiom, silkeborg | Delimited | PowerHit removal, artist/title fix |
+| Skive | "radio skive" | CSV | Date/time split |
+| Skaga | "radio hirtshals", hirtshals | CSV | Date/time split |
+| Limfjord | "limfjord mix", "limfjord slager", "radio limfjord" | CSV | Comma input |
 
 ---
 
