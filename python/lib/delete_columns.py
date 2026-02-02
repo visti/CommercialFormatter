@@ -32,7 +32,7 @@ def remove_delete_columns_and_empty_rows(file_path):
         rows = list(reader)
 
     if not rows:
-        print(f"{YELLOW}Warning:{RESET} No data found in {file_path.name}")
+        print(f"{YELLOW}Warning:{RESET} No data found in {os.path.basename(file_path)}")
         sys.stdout.flush()
         return
 
@@ -89,7 +89,7 @@ def remove_delete_columns_and_empty_rows(file_path):
             parts.append(f"{deleted_malformed} malformed")
         print(f"{YELLOW}Cleanup:{RESET} Removed {total_deleted} row(s) ({', '.join(parts)})")
 
-    print(f"{GREEN}Done:{RESET} {len(delete_columns)} columns removed → {CYAN}{file_path.name}{RESET}")
+    print(f"{GREEN}Done:{RESET} {len(delete_columns)} columns removed → {CYAN}{os.path.basename(file_path)}{RESET}")
     sys.stdout.flush()
 
 def main():

@@ -18,7 +18,7 @@ import app_logging as logging
 import output as console
 from choices import get_choices_manager
 from config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
-from decisions import DecisionManager, ARTIST_TITLE_CONFIG, LONG_TIME_CONFIG, DUPLICATE_CONFIG
+from decisions import DecisionManager, ARTIST_TITLE_CONFIG, LONG_TIME_CONFIG, DUPLICATE_CONFIG, DecisionConfig, Option
 from formatters import format_date, format_time, format_duration, get_duration_minutes
 from settings import get_settings
 from stations import Station
@@ -309,7 +309,10 @@ def read_files(
 
         joined_content.extend(lines)
 
-    # Phase 3: Check long playing times (CSV stations only)
+    # Phase 3: Check for multiple years
+    joined_content = check_multiple_years(joined_content, station)
+
+    # Phase 4: Check long playing times (CSV stations only)
     if not station.positional:
         title_idx = station.get_field_index("title", -1)
         artist_idx = station.get_field_index("artist", -1)
@@ -580,6 +583,127 @@ def check_duplicates(
     )
 
     return lines, reject_indices
+
+
+def extract_year_from_date(date_str: str) -> str | None:
+    """Extract year from a date string by normalizing it first.
+
+    Uses format_date() to normalize to DD-MM-YYYY, then extracts the year.
+    This handles all supported date formats automatically.
+
+    Args:
+        date_str: Date string in any supported format.
+
+    Returns:
+        Year as string (YYYY), or None if cannot be parsed.
+    """
+    normalized = format_date(date_str.strip())
+
+    # format_date returns DD-MM-YYYY format
+    # Check if it looks like a valid normalized date
+    if len(normalized) == 10 and normalized[2] == "-" and normalized[5] == "-":
+        year = normalized[6:10]
+        # Verify it's actually a year (4 digits)
+        if year.isdigit():
+            return year
+
+    return None
+
+
+def check_multiple_years(
+    lines: list[str],
+    station: Station,
+    date_idx: int = 0,
+) -> list[str]:
+    """Check for dates from multiple years and prompt user if found.
+
+    Args:
+        lines: List of input lines.
+        station: Station configuration.
+        date_idx: Field index for date (default 0).
+
+    Returns:
+        Lines, possibly filtered to a specific year.
+    """
+    sep = station.input_separator
+    year_counts: Counter[str] = Counter()
+    lines_by_year: dict[str, list[int]] = {}
+
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+
+        fields = line.split(sep)
+        if len(fields) <= date_idx:
+            continue
+
+        year = extract_year_from_date(fields[date_idx])
+        if year:
+            year_counts[year] += 1
+            if year not in lines_by_year:
+                lines_by_year[year] = []
+            lines_by_year[year].append(i)
+
+    # If only one year or no years found, return unchanged
+    if len(year_counts) <= 1:
+        return lines
+
+    # Multiple years found - warn and prompt
+    total_lines = sum(year_counts.values())
+    sorted_years = sorted(year_counts.keys())
+
+    console.warning(f"Found dates from {len(year_counts)} different years:")
+    for year in sorted_years:
+        count = year_counts[year]
+        pct = (count / total_lines) * 100
+        console.info(f"  {year}: {count:,} lines ({pct:.1f}%)")
+    print()
+
+    # Build options dynamically based on years found
+    options = [
+        Option("a", ["all", "keep"], "All years", "all", is_default=True),
+    ]
+    for i, year in enumerate(sorted_years):
+        # Use number keys for year selection (1, 2, 3, ...)
+        key = str(i + 1)
+        options.append(Option(key, [year], f"{key}={year}", year))
+
+    config = DecisionConfig(
+        name="multiple_years",
+        options=options,
+        prompt_prefix="  Keep: ",
+    )
+
+    # Build custom prompt since years don't fit the [X]label pattern
+    prompt_parts = ["[A]ll"]
+    for i, year in enumerate(sorted_years):
+        prompt_parts.append(f"[{i + 1}] {year}")
+    prompt_text = "  Keep: " + " / ".join(prompt_parts) + ": "
+
+    # Prompt user
+    while True:
+        response = input(prompt_text).strip().lower()
+        action = config.parse_response(response)
+
+        if action is None:
+            valid_keys = ", ".join(o.key.upper() for o in options)
+            console.error(f"  Invalid choice. Enter one of: {valid_keys}")
+            continue
+        break
+
+    if action == "all":
+        console.info("  Keeping all years")
+        return lines
+
+    # Filter to selected year
+    selected_year = action
+    keep_indices = set(lines_by_year.get(selected_year, []))
+    filtered_lines = [line for i, line in enumerate(lines) if i in keep_indices]
+
+    removed_count = len(lines) - len(filtered_lines)
+    console.success(f"  Filtered to {selected_year}: kept {len(filtered_lines):,} lines, removed {removed_count:,}")
+
+    return filtered_lines
 
 
 def process_positional_line(
