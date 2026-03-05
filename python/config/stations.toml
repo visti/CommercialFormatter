@@ -227,3 +227,25 @@ headlines = [
   "Main Artist",
   "DELETE",
 ]
+
+[radionordpandrup]
+name = "Radio Nord Pandrup"
+aliases = ["radio nord pandrup", "nord pandrup", "radionordpandrup"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+convert = false
+separator = ";"
+positions = []
+# Air Date;Air Time;Air Location;Music Title;Performer;Composer / Arranger;Publisher;Music Duration;Played Duration
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "DELETE",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+  "DELETE",
+  "DELETE",
+  "Track Playing Time",
+]
