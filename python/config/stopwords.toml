@@ -98,3 +98,8 @@ words = [
     "Radio ABC",
     "ABC live",
 ]
+
+[radionordpandrup]
+words = [
+    "shotgun",
+]
