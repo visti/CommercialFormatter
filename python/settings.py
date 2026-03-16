@@ -8,9 +8,35 @@ from pathlib import Path
 from typing import Literal
 
 
+def _parse_duration_to_minutes(value: str, fallback: int = 30) -> int:
+    """Parse [h]:mm:ss or mm:ss into total minutes (floor)."""
+    value = value.strip()
+    if not value:
+        return fallback
+
+    parts = value.split(":")
+    if len(parts) not in (2, 3):
+        return fallback
+
+    try:
+        if len(parts) == 2:
+            minutes = int(parts[0])
+            seconds = int(parts[1])
+            total_seconds = minutes * 60 + seconds
+            return max(0, total_seconds // 60)
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        seconds = int(parts[2])
+        total_seconds = hours * 3600 + minutes * 60 + seconds
+        return max(0, total_seconds // 60)
+    except ValueError:
+        return fallback
+
+
 @dataclass
 class ThresholdSettings:
     """Threshold configuration."""
+    long_playing_time: str = "00:30:00"
     long_playing_time_minutes: int = 30
     overflow_threshold_minutes: int = 1400
 
@@ -45,6 +71,12 @@ class ChoicesSettings:
 
 
 @dataclass
+class EncodingSettings:
+    """Encoding detection configuration."""
+    sample_size_bytes: int = 256 * 1024
+
+
+@dataclass
 class Settings:
     """Global application settings."""
     thresholds: ThresholdSettings = field(default_factory=ThresholdSettings)
@@ -52,6 +84,7 @@ class Settings:
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     duplicates: DuplicateSettings = field(default_factory=DuplicateSettings)
     choices: ChoicesSettings = field(default_factory=ChoicesSettings)
+    encoding: EncodingSettings = field(default_factory=EncodingSettings)
 
 
 def load_settings(config_dir: Path | None = None) -> Settings:
@@ -78,13 +111,14 @@ def load_settings(config_dir: Path | None = None) -> Settings:
         return Settings()
 
     # Build settings from TOML data
+    thresholds_data = data.get("thresholds", {})
+    long_playing_time = thresholds_data.get("long_playing_time", "00:30:00")
+    long_playing_time_minutes = _parse_duration_to_minutes(long_playing_time, fallback=30)
+
     thresholds = ThresholdSettings(
-        long_playing_time_minutes=data.get("thresholds", {}).get(
-            "long_playing_time_minutes", 30
-        ),
-        overflow_threshold_minutes=data.get("thresholds", {}).get(
-            "overflow_threshold_minutes", 1400
-        ),
+        long_playing_time=long_playing_time,
+        long_playing_time_minutes=long_playing_time_minutes,
+        overflow_threshold_minutes=thresholds_data.get("overflow_threshold_minutes", 1400),
     )
 
     backup = BackupSettings(
@@ -117,6 +151,11 @@ def load_settings(config_dir: Path | None = None) -> Settings:
         logging=logging,
         duplicates=duplicates,
         choices=choices,
+        encoding=EncodingSettings(
+            sample_size_bytes=data.get("encoding", {}).get(
+                "sample_size_bytes", 256 * 1024
+            )
+        ),
     )
 
 

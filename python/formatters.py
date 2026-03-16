@@ -150,11 +150,20 @@ class FieldFormatter:
             return None
 
         parts = duration_str.split(":")
-        if len(parts) < 2:
+        if len(parts) < 2 or len(parts) > 3:
             return None
 
         try:
-            return int(parts[0])
+            if len(parts) == 2:
+                minutes = int(parts[0])
+                seconds = int(parts[1])
+                total_seconds = minutes * 60 + seconds
+                return total_seconds // 60
+            hours = int(parts[0])
+            minutes = int(parts[1])
+            seconds = int(parts[2])
+            total_seconds = hours * 3600 + minutes * 60 + seconds
+            return total_seconds // 60
         except ValueError:
             return None
 

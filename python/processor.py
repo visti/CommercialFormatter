@@ -40,8 +40,11 @@ def detect_encoding(file_path: Path) -> str:
     Returns:
         Detected encoding string, defaulting to utf-8 if detection fails.
     """
+    # Read a substantial but bounded sample for performance on large files.
+    settings = get_settings()
+    sample_size = max(1024, settings.encoding.sample_size_bytes)
     with open(file_path, "rb") as f:
-        raw_data = f.read()
+        raw_data = f.read(sample_size)
     result = chardet.detect(raw_data)
     encoding = result.get("encoding", "utf-8")
     # Handle common encoding aliases
@@ -920,18 +923,17 @@ def process_files(
                 # Pre-compute lowercase once for efficiency
                 line_lower = line.lower()
 
-                # Check stopwords using pre-compiled regex
-                if use_stopwords and station.matches_stopword_lower(line_lower):
+                # Check stopwords using pre-compiled regex (single search)
+                matched_stopword = station.get_matched_stopword(line_lower) if use_stopwords else None
+                if matched_stopword:
                     if reject_f:
                         reject_line = process_line(line, station)
                         reject_f.write(reject_line + "\n")
                     rejected += 1
 
                     # Track which stopword matched for summary
-                    matched_stopword = station.get_matched_stopword(line_lower)
-                    if matched_stopword:
-                        stopword_counts[matched_stopword] += 1
-                        logging.log_stopword_match(line_index, matched_stopword)
+                    stopword_counts[matched_stopword] += 1
+                    logging.log_stopword_match(line_index, matched_stopword)
 
                     line_index += 1
                     continue

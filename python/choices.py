@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from formatters import get_duration_minutes
 from settings import get_settings
 
 # Choice types
@@ -90,6 +91,7 @@ class ChoicesManager:
         """Create a unique key for a title/artist combination."""
         return f"{title}|||{artist}"
 
+
     def get_artist_title_choice(
         self, title: str, artist: str
     ) -> ChoiceAction | None:
@@ -149,6 +151,11 @@ class ChoicesManager:
             Tuple of (action, edited_time) or (None, None) if not remembered
         """
         if not self.enabled:
+            return None, None
+
+        minutes = get_duration_minutes(time)
+        threshold = get_settings().thresholds.long_playing_time_minutes
+        if minutes is None or minutes < threshold:
             return None, None
 
         key = self._make_key(title, artist)
