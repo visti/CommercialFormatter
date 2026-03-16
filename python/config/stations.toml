@@ -57,7 +57,7 @@ headlines = [
 
 [globus]
 name = "Globus"
-aliases = []
+aliases = ["viva", "victoria", "guld"]
 extensions = ["txt"]
 positional = false
 has_headlines = false
@@ -210,7 +210,46 @@ headlines = [
 
 [limfjord]
 name = "Limfjord"
-aliases = ["limfjord mix", "limfjord slager", "radio limfjord"]
+aliases = ["limfjord mix", "radio limfjord"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+convert = false
+separator = ";"
+input_separator = ","
+positions = []
+# Air Date,Air Time,Played Duration,Music Title,First Artist,Station
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+]
+
+[limfjordslager]
+name = "Limfjord Slager"
+aliases = ["limfjord slager"]
+extensions = ["csv"]
+positional = false
+has_headlines = true
+convert = false
+separator = ";"
+positions = []
+# Air Date;Air Time;Played Duration;Music Title;First Artist;Station
+headlines = [
+  "Date of Broadcasting",
+  "Track Starting Time",
+  "Track Playing Time",
+  "Track Title",
+  "Main Artist",
+  "DELETE",
+]
+
+["sydhavsøerne"]
+name = "Radio Sydhavsøerne"
+aliases = ["radio sydhavsøerne", "sydhavsøerne"]
 extensions = ["csv"]
 positional = false
 has_headlines = true
