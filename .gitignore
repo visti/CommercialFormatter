@@ -1,6 +1,8 @@
 /*.log
 /bak/*
 /commercial_formatter
+/queries/
+/python/config/remembered_choices.toml
 
 # Python
 __pycache__/

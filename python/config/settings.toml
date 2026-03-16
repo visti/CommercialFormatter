@@ -2,8 +2,8 @@
 # Edit this file to customize behavior without changing code
 
 [thresholds]
-# Playing time threshold in minutes - tracks over this trigger a prompt
-long_playing_time_minutes = 30
+# Playing time threshold as [h]:mm:ss - tracks over this trigger a prompt
+long_playing_time = "00:30:00"
 
 # Overflow threshold in minutes - times >= this are corrected (1440 = 24 hours)
 overflow_threshold_minutes = 1400
@@ -39,3 +39,7 @@ remember_fixes = true
 
 # File to store remembered choices
 choices_file = "config/remembered_choices.toml"
+
+[encoding]
+# Bytes sampled for encoding detection (minimum 1024)
+sample_size_bytes = 262144
