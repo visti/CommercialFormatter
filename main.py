@@ -2,6 +2,7 @@
 """Commercial Formatter - Main entry point."""
 
 import argparse
+import getpass
 import subprocess
 import sys
 import tomllib
@@ -137,6 +138,12 @@ def print_stations_and_aliases():
 
 
 def main():
+    if getpass.getuser().lower() != "eva":
+        console.warning("You are not running as user 'eva'. Remember to update REJECTDIR in src/config.py.")
+        answer = input("Continue anyway? [y/N] ").strip().lower()
+        if answer != "y":
+            sys.exit(0)
+
     parser = argparse.ArgumentParser(
         prog="komm_fmt",
         description="Commercial Formatter — Process broadcast metadata files",
