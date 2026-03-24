@@ -7,10 +7,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-import output as console
-from config import CONVERT_SCRIPT, NOTVALIDSTATION, REJECTDIR
-from processor import get_files, make_additional_filename, process_files, read_files
-from stations import get_station, list_aliases, list_stations
+from src import output as console
+from src.config import CONVERT_SCRIPT, NOTVALIDSTATION, REJECTDIR
+from src.processor import get_files, make_additional_filename, process_files, read_files
+from src.stations import get_station, list_aliases, list_stations
 
 # Folder mapping config
 FOLDERS_CONFIG = Path(__file__).parent / "config" / "folders.toml"

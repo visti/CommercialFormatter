@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from formatters import get_duration_minutes
-from settings import get_settings
+from .formatters import get_duration_minutes
+from .settings import get_settings
 
 # Choice types
 ChoiceAction = Literal["fix", "skip", "reject"]
@@ -24,7 +24,7 @@ class ChoicesManager:
             config_dir: Directory for config files. If None, uses default.
         """
         if config_dir is None:
-            config_dir = Path(__file__).parent / "config"
+            config_dir = Path(__file__).parent.parent / "config"
 
         self.config_dir = config_dir
         settings = get_settings()

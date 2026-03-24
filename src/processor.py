@@ -14,14 +14,14 @@ from typing import IO, TYPE_CHECKING
 
 import chardet
 
-import app_logging as logging
-import output as console
-from choices import get_choices_manager
-from config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
-from decisions import DecisionManager, ARTIST_TITLE_CONFIG, LONG_TIME_CONFIG, DUPLICATE_CONFIG, DecisionConfig, Option
-from formatters import format_date, format_time, format_duration, get_duration_minutes
-from settings import get_settings
-from stations import Station
+from . import app_logging as logging
+from . import output as console
+from .choices import get_choices_manager
+from .config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
+from .decisions import DecisionManager, ARTIST_TITLE_CONFIG, LONG_TIME_CONFIG, DUPLICATE_CONFIG, DecisionConfig, Option
+from .formatters import format_date, format_time, format_duration, get_duration_minutes
+from .settings import get_settings
+from .stations import Station
 
 if TYPE_CHECKING:
     from output import ProcessingStats

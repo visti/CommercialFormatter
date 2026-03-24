@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from stations import Station
+    from .stations import Station
 
-from settings import get_settings
+from .settings import get_settings
 
 # Module-level logger
 _logger: logging.Logger | None = None

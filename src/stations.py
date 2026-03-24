@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 # Config directory path
-CONFIG_DIR = Path(__file__).parent / "config"
+CONFIG_DIR = Path(__file__).parent.parent / "config"
 STATIONS_FILE = CONFIG_DIR / "stations.toml"
 STOPWORDS_FILE = CONFIG_DIR / "stopwords.toml"
 

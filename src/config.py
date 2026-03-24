@@ -3,8 +3,8 @@
 from pathlib import Path
 
 # Paths
-BASE_DIR = Path(__file__).parent
-LIB_DIR = BASE_DIR / "lib"
+BASE_DIR = Path(__file__).parent.parent
+LIB_DIR = BASE_DIR / "scripts"
 CONFIG_DIR = BASE_DIR / "config"
 CONVERT_SCRIPT = LIB_DIR / "convert.py"
 DELETE_COLS_SCRIPT = LIB_DIR / "delete_columns.py"

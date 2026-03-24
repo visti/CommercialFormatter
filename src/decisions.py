@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-import app_logging as logging
-import output as console
+from . import app_logging as logging
+from . import output as console
 
 
 @dataclass

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import app_logging as logging
-from settings import get_settings
+from . import app_logging as logging
+from .settings import get_settings
 
 # Constants for time calculations
 SECONDS_PER_DAY = 86400

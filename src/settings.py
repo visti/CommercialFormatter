@@ -97,7 +97,7 @@ def load_settings(config_dir: Path | None = None) -> Settings:
         Settings object with loaded or default values.
     """
     if config_dir is None:
-        config_dir = Path(__file__).parent / "config"
+        config_dir = Path(__file__).parent.parent / "config"
 
     settings_file = config_dir / "settings.toml"
 
