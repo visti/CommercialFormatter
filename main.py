@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src import output as console
 from src.config import CONVERT_SCRIPT, NOTVALIDSTATION, REJECTDIR
+from src.interaction import CLIInteractionHandler
 from src.processor import get_files, make_additional_filename, process_files, read_files
 from src.stations import get_station, list_aliases, list_stations
 
@@ -324,7 +325,8 @@ Examples:
         files = get_files(station, exclude_filename=output_filename)
     stats.files_total = len(files)
 
-    content, reject_indices = read_files(files, station, stats)
+    interaction = CLIInteractionHandler()
+    content, reject_indices = read_files(files, station, stats, interaction_handler=interaction)
 
     process_files(
         content=content,

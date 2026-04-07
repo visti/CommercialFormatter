@@ -9,11 +9,13 @@ description = "Process broadcast metadata files from radio stations"
 requires-python = ">=3.11"
 dependencies = [
     "chardet",
+    "customtkinter",
     "openpyxl",
 ]
 
 [project.scripts]
 komm_fmt = "main:main"
+komm_fmt_gui = "src.gui:main"
 
 [tool.setuptools]
 py-modules = ["main"]

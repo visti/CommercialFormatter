@@ -75,7 +75,7 @@ def remove_delete_columns_and_empty_rows(file_path):
                 continue
         final_rows.append(row)
 
-    with open(file_path, 'w', newline='', encoding='utf-8') as outfile:
+    with open(file_path, 'w', newline='', encoding='utf-8-sig') as outfile:
         writer = csv.writer(outfile, delimiter=';')
         writer.writerows(final_rows)
 
@@ -89,7 +89,7 @@ def remove_delete_columns_and_empty_rows(file_path):
             parts.append(f"{deleted_malformed} malformed")
         print(f"{YELLOW}Cleanup:{RESET} Removed {total_deleted} row(s) ({', '.join(parts)})")
 
-    print(f"{GREEN}Done:{RESET} {len(delete_columns)} columns removed → {CYAN}{os.path.basename(file_path)}{RESET}")
+    print(f"{GREEN}Done:{RESET} {len(delete_columns)} columns removed -> {CYAN}{os.path.basename(file_path)}{RESET}")
     sys.stdout.flush()
 
 def main():
