@@ -20,6 +20,7 @@ from .choices import get_choices_manager
 from .config import ADDITIONAL_POSTFIX, DELETE_COLS_SCRIPT, REJECTDIR
 from .decisions import DecisionManager, ARTIST_TITLE_CONFIG, LONG_TIME_CONFIG, DUPLICATE_CONFIG, DecisionConfig, Option
 from .formatters import format_date, format_time, format_duration, get_duration_minutes
+from .interaction import InteractionHandler
 from .settings import get_settings
 from .stations import Station
 
@@ -152,6 +153,7 @@ def clear_checkpoint(output_dir: Path | None = None) -> None:
 def check_artist_title_split(
     lines: list[str],
     station: Station,
+    interaction_handler: InteractionHandler | None = None,
 ) -> tuple[list[str], set[int]]:
     """Check for and fix artist/title split issues where title contains ' - '.
 
@@ -221,6 +223,7 @@ def check_artist_title_split(
         ARTIST_TITLE_CONFIG,
         get_remembered=get_remembered,
         remember_choice=remember_choice,
+        interaction_handler=interaction_handler,
     )
 
     reject_indices = manager.process_issues(
@@ -278,6 +281,7 @@ def read_files(
     files: list[Path],
     station: Station,
     stats: ProcessingStats | None = None,
+    interaction_handler: InteractionHandler | None = None,
 ) -> tuple[str, set[int]]:
     """Read and concatenate all input files, applying transformations and validation.
 
@@ -305,7 +309,7 @@ def read_files(
 
         # Phase 2: Check artist/title split (if configured)
         if station.fix_artist_title_split:
-            lines, reject_indices = check_artist_title_split(lines, station)
+            lines, reject_indices = check_artist_title_split(lines, station, interaction_handler)
             # Offset indices to global position
             offset = len(joined_content)
             all_reject_indices.update(i + offset for i in reject_indices)
@@ -313,7 +317,7 @@ def read_files(
         joined_content.extend(lines)
 
     # Phase 3: Check for multiple years
-    joined_content = check_multiple_years(joined_content, station)
+    joined_content = check_multiple_years(joined_content, station, interaction_handler=interaction_handler)
 
     # Phase 4: Check long playing times (CSV stations only)
     if not station.positional:
@@ -323,7 +327,8 @@ def read_files(
 
         if title_idx >= 0 and artist_idx >= 0 and time_idx >= 0:
             joined_content, time_reject_indices = check_long_playing_times(
-                joined_content, station, title_idx, artist_idx, time_idx
+                joined_content, station, title_idx, artist_idx, time_idx,
+                interaction_handler=interaction_handler,
             )
             all_reject_indices.update(time_reject_indices)
 
@@ -365,6 +370,7 @@ def check_long_playing_times(
     title_idx: int = 7,
     artist_idx: int = 8,
     time_idx: int = 2,
+    interaction_handler: InteractionHandler | None = None,
 ) -> tuple[list[str], set[int]]:
     """Check for tracks with long playing times and prompt user.
 
@@ -471,6 +477,7 @@ def check_long_playing_times(
         LONG_TIME_CONFIG,
         get_remembered=get_remembered,
         remember_choice=remember_choice,
+        interaction_handler=interaction_handler,
     )
 
     reject_indices = manager.process_issues(
@@ -497,6 +504,7 @@ def check_duplicates(
     title_idx: int = 7,
     artist_idx: int = 8,
     date_idx: int = 0,
+    interaction_handler: InteractionHandler | None = None,
 ) -> tuple[list[str], set[int]]:
     """Check for duplicate tracks and prompt user.
 
@@ -576,7 +584,7 @@ def check_duplicates(
             console.info("  Keeping all")
             return set()
 
-    manager = DecisionManager(DUPLICATE_CONFIG)
+    manager = DecisionManager(DUPLICATE_CONFIG, interaction_handler=interaction_handler)
 
     reject_indices = manager.process_issues(
         duplicates,
@@ -617,6 +625,7 @@ def check_multiple_years(
     lines: list[str],
     station: Station,
     date_idx: int = 0,
+    interaction_handler: InteractionHandler | None = None,
 ) -> list[str]:
     """Check for dates from multiple years and prompt user if found.
 
@@ -684,15 +693,18 @@ def check_multiple_years(
     prompt_text = "  Keep: " + " / ".join(prompt_parts) + ": "
 
     # Prompt user
-    while True:
-        response = input(prompt_text).strip().lower()
-        action = config.parse_response(response)
+    if interaction_handler is not None:
+        action, _ = interaction_handler.prompt_decision(config, key=dict(year_counts), count=len(sorted_years))
+    else:
+        while True:
+            response = input(prompt_text).strip().lower()
+            action = config.parse_response(response)
 
-        if action is None:
-            valid_keys = ", ".join(o.key.upper() for o in options)
-            console.error(f"  Invalid choice. Enter one of: {valid_keys}")
-            continue
-        break
+            if action is None:
+                valid_keys = ", ".join(o.key.upper() for o in options)
+                console.error(f"  Invalid choice. Enter one of: {valid_keys}")
+                continue
+            break
 
     if action == "all":
         console.info("  Keeping all years")
@@ -879,16 +891,16 @@ def process_files(
     try:
         # Open all output files using ExitStack for proper context management
         with ExitStack() as stack:
-            out_f = stack.enter_context(open(output_file, "w", encoding="utf-8"))
+            out_f = stack.enter_context(open(output_file, "w", encoding="utf-8-sig"))
 
             reject_f: IO[str] | None = None
             if reject_path:
-                reject_f = stack.enter_context(open(reject_path, "w", encoding="utf-8"))
+                reject_f = stack.enter_context(open(reject_path, "w", encoding="utf-8-sig"))
 
             additional_f: IO[str] | None = None
             if has_additional:
                 additional_f = stack.enter_context(
-                    open(additional_path, "w", encoding="utf-8")
+                    open(additional_path, "w", encoding="utf-8-sig")
                 )
                 console.info(f"Additional filter: {console.cyan(additional_filter)}")
                 if stats:

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from . import app_logging as logging
 from . import output as console
+
+if TYPE_CHECKING:
+    from .interaction import InteractionHandler
 
 
 @dataclass
@@ -72,6 +75,7 @@ class DecisionManager:
         config: DecisionConfig,
         get_remembered: Callable[[tuple], Any] | None = None,
         remember_choice: Callable[[tuple, str, Any], None] | None = None,
+        interaction_handler: InteractionHandler | None = None,
     ):
         """Initialize decision manager.
 
@@ -79,10 +83,12 @@ class DecisionManager:
             config: Decision configuration.
             get_remembered: Callback to get remembered choice for a key.
             remember_choice: Callback to remember a choice.
+            interaction_handler: Optional handler for GUI/CLI prompts.
         """
         self.config = config
         self.get_remembered = get_remembered
         self.remember_choice = remember_choice
+        self._interaction_handler = interaction_handler
 
     def process_issues(
         self,
@@ -133,7 +139,7 @@ class DecisionManager:
             display_issue(key, indices, count)
 
             # Prompt for action
-            action, extra_data = self._prompt_user(extra_input_handler)
+            action, extra_data = self._prompt_user(key, len(indices), extra_input_handler)
 
             # Remember choice
             if self.remember_choice and action:
@@ -157,9 +163,20 @@ class DecisionManager:
         return remembered, None
 
     def _prompt_user(
-        self, extra_input_handler: Callable[[str], Any] | None = None
+        self,
+        key: Any = None,
+        count: int = 0,
+        extra_input_handler: Callable[[str], Any] | None = None,
     ) -> tuple[str | None, Any]:
         """Prompt user and return (action, extra_data)."""
+        if self._interaction_handler is not None:
+            return self._interaction_handler.prompt_decision(
+                self.config,
+                key=key,
+                count=count,
+                extra_input_fn=extra_input_handler,
+            )
+
         while True:
             response = input(self.config.get_prompt_text()).strip().lower()
             action = self.config.parse_response(response)
